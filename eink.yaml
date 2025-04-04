@@ -8,7 +8,8 @@ esp32:
 
 # Enable logging
 logger:
-  level: VERBOSE
+  level: DEBUG
+  baud_rate: 115200
 
 # Enable Home Assistant API
 api:
@@ -36,18 +37,63 @@ spi:
 
 # Reference local font file
 font:
+  - file: "OpenSans-Bold.ttf"
+    id: font_bold_small
+    size: 25
   - file: "opensans.ttf"
     id: font_small
     size: 25
   - file: "opensans.ttf"
     id: font_medium
-    size: 60
+    size: 40
   - file: "opensans.ttf"
     id: font_large
     size: 100
   - file: "opensans.ttf"
     id: font_tiny
     size: 15
+  - file: "opensans.ttf"
+    id: font_date
+    size: 40
+  # Include Material Design Icons font with specified glyphs
+  - file: "materialdesignicons-webfont.ttf"
+    id: icon_font
+    size: 100
+    glyphs:
+      - "\U000F0590" # mdi-weather-cloudy
+      - "\U000F0F2F" # mdi-weather-cloudy-alert
+      - "\U000F0591" # mdi-weather-fog
+      - "\U000F0592" # mdi-weather-hail
+      - "\U000F0593" # mdi-weather-lightning
+      - "\U000F067E" # mdi-weather-lightning-rainy
+      - "\U000F0594" # mdi-weather-clear-night
+      - "\U000F0595" # mdi-weather-partly-cloudy
+      - "\U000F0596" # mdi-weather-pouring
+      - "\U000F0597" # mdi-weather-rainy
+      - "\U000F0598" # mdi-weather-snowy
+      - "\U000F067F" # mdi-weather-snowy-rainy
+      - "\U000F0599" # mdi-weather-sunny
+      - "\U000F059D" # mdi-weather-windy
+      - "\U000F059E" # mdi-weather-windy-variant
+  - file: "materialdesignicons-webfont.ttf"
+    id: icon_font_small
+    size: 80
+    glyphs:
+      - "\U000F0590" # mdi-weather-cloudy
+      - "\U000F0F2F" # mdi-weather-cloudy-alert
+      - "\U000F0591" # mdi-weather-fog
+      - "\U000F0592" # mdi-weather-hail
+      - "\U000F0593" # mdi-weather-lightning
+      - "\U000F067E" # mdi-weather-lightning-rainy
+      - "\U000F0594" # mdi-weather-clear-night
+      - "\U000F0595" # mdi-weather-partly-cloudy
+      - "\U000F0596" # mdi-weather-pouring
+      - "\U000F0597" # mdi-weather-rainy
+      - "\U000F0598" # mdi-weather-snowy
+      - "\U000F067F" # mdi-weather-snowy-rainy
+      - "\U000F0599" # mdi-weather-sunny
+      - "\U000F059D" # mdi-weather-windy
+      - "\U000F059E" # mdi-weather-windy-variant
 
 power_supply:
   - id: epaper_power
@@ -68,70 +114,332 @@ display:
     update_interval: 300s
 
     lambda: |-
-      // Simple, reliable display code
+      // Fill with black background
       it.fill(Color::BLACK);
       
-      // Draw time in larger, simpler format
       auto time = id(time_sensor).now();
       if (time.is_valid()) {
+        char date_str[40];
+        const char* weekdays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+        const char* months[] = {"January", "February", "March", "April", "May", "June", "July", 
+                               "August", "September", "October", "November", "December"};
+        
+        const char* suffix;
+        int day = time.day_of_month;
+        if (day == 1 || day == 21 || day == 31) suffix = "st";
+        else if (day == 2 || day == 22) suffix = "nd";
+        else if (day == 3 || day == 23) suffix = "rd";
+        else suffix = "th";
+        
+        // Fix for day of week - ESPHome's day_of_week starts with Monday as 1, so we adjust
+        int corrected_day_of_week = (time.day_of_week + 6) % 7;  // Convert to 0=Sunday, 1=Monday, etc.
+        
+        sprintf(date_str, "%s, %s %d%s", 
+                weekdays[corrected_day_of_week], 
+                months[time.month - 1], 
+                day, 
+                suffix);
+        
+        // Draw the date centered at the top, shifted up and left
+        it.print(385, 30, id(font_date), Color::WHITE, TextAlign::TOP_CENTER, date_str);
+        
+        // Draw time in large format below the date, shifted up 50px more and left 10px
         int hour = time.hour % 12 == 0 ? 12 : time.hour % 12;
         const char *am_pm = time.hour >= 12 ? "PM" : "AM";
         
-        // Format time string properly
         char time_str[16];
-        sprintf(time_str, "%02d:%02d %s", hour, time.minute, am_pm);
-        it.print(100, 40, id(font_large), Color::WHITE, time_str);
+        sprintf(time_str, "%d:%02d %s", hour, time.minute, am_pm);
+        it.print(385, 70, id(font_large), Color::WHITE, TextAlign::TOP_CENTER, time_str);
         
-        // Format date string properly
-        char date_str[16];
-        sprintf(date_str, "%02d/%02d/%04d", time.month, time.day_of_month, time.year);
-        it.print(100, 160, id(font_medium), Color::WHITE, date_str);
+        // Draw a thin horizontal line below the time, shifted up
+        it.line(85, 200, 685, 200, Color::WHITE);
       }
       
-      // Weather information title (smaller and moved down)
-      it.print(100, 260, id(font_small), Color::WHITE, "Weather:");
+      // HOURLY FORECAST SECTION - Now arranged horizontally, shifted up and left
+      const int forecast_base_y = 215;   // Base Y position for the forecast section (moved up 30px)
+      const int forecast_spacing = 135;  // Spacing between each hour's forecast (reduced by 20px)
+      const int icon_offset_y = 70;      // Vertical offset for icons
+      const int temp_offset_y = 140;     // Vertical offset for temperature
       
-      // Try to display weather condition - fixed approach
-      if (id(weather_condition).has_state()) {
-        // Using a different approach to display the condition
-        std::string condition = id(weather_condition).state;
-        if (!condition.empty()) {
-          // Capitalize first letter if possible
-          condition[0] = toupper(condition[0]);
-          it.print(100, 330, id(font_small), Color::WHITE, condition.c_str());
+      const int first_hour_x = 160;      // X position of the first hour (shifted left 10px more)
+      
+      // Hour 1 forecast
+      if (id(forecast_hour1_condition).has_state() && id(forecast_hour1_temp).has_state()) {
+        // Get hour time
+        if (id(forecast_hour1_datetime).has_state()) {
+          std::string datetime_str = id(forecast_hour1_datetime).state;
+          struct tm tm = {};
+          strptime(datetime_str.c_str(), "%Y-%m-%dT%H:%M:%S%z", &tm);
+          
+          char hour_str[10];
+          if (tm.tm_hour == 0) {
+            sprintf(hour_str, "12 AM");
+          } else if (tm.tm_hour < 12) {
+            sprintf(hour_str, "%d AM", tm.tm_hour);
+          } else if (tm.tm_hour == 12) {
+            sprintf(hour_str, "12 PM");
+          } else {
+            sprintf(hour_str, "%d PM", tm.tm_hour - 12);
+          }
+          
+          // Print hour
+          it.print(first_hour_x, forecast_base_y, id(font_medium), Color::WHITE, TextAlign::TOP_CENTER, hour_str);
         } else {
-          it.print(100, 330, id(font_small), Color::WHITE, "Unknown condition");
+          it.print(first_hour_x, forecast_base_y, id(font_medium), Color::WHITE, TextAlign::TOP_CENTER, "+1h");
         }
+        
+        // Get condition icon
+        std::string condition = id(forecast_hour1_condition).state;
+        for (auto & c: condition) c = tolower(c);
+        
+        const char* icon = "\U000F0F2F";  // default icon
+        
+        if (condition.find("clear-night") != std::string::npos) {
+          icon = "\U000F0594";
+        } else if (condition.find("cloudy") != std::string::npos) {
+          icon = "\U000F0590";
+        } else if (condition.find("fog") != std::string::npos) {
+          icon = "\U000F0591";
+        } else if (condition.find("hail") != std::string::npos) {
+          icon = "\U000F0592";
+        } else if (condition.find("lightning") != std::string::npos) {
+          icon = "\U000F0593";
+        } else if (condition.find("rainy") != std::string::npos) {
+          icon = "\U000F0597";
+        } else if (condition.find("pouring") != std::string::npos) {
+          icon = "\U000F0596";
+        } else if (condition.find("snowy") != std::string::npos) {
+          icon = "\U000F0598";
+        } else if (condition.find("sunny") != std::string::npos) {
+          icon = "\U000F0599";
+        } else if (condition.find("windy") != std::string::npos) {
+          icon = "\U000F059D";
+        } else if (condition.find("partlycloudy") != std::string::npos) {
+          icon = "\U000F0595";
+        }
+        
+        // Draw icon
+        it.print(first_hour_x, forecast_base_y + icon_offset_y, id(icon_font_small), Color::WHITE, TextAlign::TOP_CENTER, icon);
+        
+        // Print temperature
+        char temp_str[16];
+        sprintf(temp_str, "%.0f°", id(forecast_hour1_temp).state);
+        it.print(first_hour_x, forecast_base_y + temp_offset_y, id(font_medium), Color::WHITE, TextAlign::TOP_CENTER, temp_str);
+      }
+      
+      // Hour 2 forecast
+      if (id(forecast_hour2_condition).has_state() && id(forecast_hour2_temp).has_state()) {
+        int hour2_x = first_hour_x + forecast_spacing;
+        
+        // Get hour time
+        if (id(forecast_hour2_datetime).has_state()) {
+          std::string datetime_str = id(forecast_hour2_datetime).state;
+          struct tm tm = {};
+          strptime(datetime_str.c_str(), "%Y-%m-%dT%H:%M:%S%z", &tm);
+          
+          char hour_str[10];
+          if (tm.tm_hour == 0) {
+            sprintf(hour_str, "12 AM");
+          } else if (tm.tm_hour < 12) {
+            sprintf(hour_str, "%d AM", tm.tm_hour);
+          } else if (tm.tm_hour == 12) {
+            sprintf(hour_str, "12 PM");
+          } else {
+            sprintf(hour_str, "%d PM", tm.tm_hour - 12);
+          }
+          
+          // Print hour
+          it.print(hour2_x, forecast_base_y, id(font_medium), Color::WHITE, TextAlign::TOP_CENTER, hour_str);
+        } else {
+          it.print(hour2_x, forecast_base_y, id(font_medium), Color::WHITE, TextAlign::TOP_CENTER, "+2h");
+        }
+        
+        // Get condition icon
+        std::string condition = id(forecast_hour2_condition).state;
+        for (auto & c: condition) c = tolower(c);
+        
+        const char* icon = "\U000F0F2F";  // default icon
+        
+        if (condition.find("clear-night") != std::string::npos) {
+          icon = "\U000F0594";
+        } else if (condition.find("cloudy") != std::string::npos) {
+          icon = "\U000F0590";
+        } else if (condition.find("fog") != std::string::npos) {
+          icon = "\U000F0591";
+        } else if (condition.find("hail") != std::string::npos) {
+          icon = "\U000F0592";
+        } else if (condition.find("lightning") != std::string::npos) {
+          icon = "\U000F0593";
+        } else if (condition.find("rainy") != std::string::npos) {
+          icon = "\U000F0597";
+        } else if (condition.find("pouring") != std::string::npos) {
+          icon = "\U000F0596";
+        } else if (condition.find("snowy") != std::string::npos) {
+          icon = "\U000F0598";
+        } else if (condition.find("sunny") != std::string::npos) {
+          icon = "\U000F0599";
+        } else if (condition.find("windy") != std::string::npos) {
+          icon = "\U000F059D";
+        } else if (condition.find("partlycloudy") != std::string::npos) {
+          icon = "\U000F0595";
+        }
+        
+        // Draw icon
+        it.print(hour2_x, forecast_base_y + icon_offset_y, id(icon_font_small), Color::WHITE, TextAlign::TOP_CENTER, icon);
+        
+        // Print temperature
+        char temp_str[16];
+        sprintf(temp_str, "%.0f°", id(forecast_hour2_temp).state);
+        it.print(hour2_x, forecast_base_y + temp_offset_y, id(font_medium), Color::WHITE, TextAlign::TOP_CENTER, temp_str);
+      }
+      
+      // Hour 3 forecast
+      if (id(forecast_hour3_condition).has_state() && id(forecast_hour3_temp).has_state()) {
+        int hour3_x = first_hour_x + (forecast_spacing * 2);
+        
+        // Get hour time
+        if (id(forecast_hour3_datetime).has_state()) {
+          std::string datetime_str = id(forecast_hour3_datetime).state;
+          struct tm tm = {};
+          strptime(datetime_str.c_str(), "%Y-%m-%dT%H:%M:%S%z", &tm);
+          
+          char hour_str[10];
+          if (tm.tm_hour == 0) {
+            sprintf(hour_str, "12 AM");
+          } else if (tm.tm_hour < 12) {
+            sprintf(hour_str, "%d AM", tm.tm_hour);
+          } else if (tm.tm_hour == 12) {
+            sprintf(hour_str, "12 PM");
+          } else {
+            sprintf(hour_str, "%d PM", tm.tm_hour - 12);
+          }
+          
+          // Print hour
+          it.print(hour3_x, forecast_base_y, id(font_medium), Color::WHITE, TextAlign::TOP_CENTER, hour_str);
+        } else {
+          it.print(hour3_x, forecast_base_y, id(font_medium), Color::WHITE, TextAlign::TOP_CENTER, "+3h");
+        }
+        
+        // Get condition icon
+        std::string condition = id(forecast_hour3_condition).state;
+        for (auto & c: condition) c = tolower(c);
+        
+        const char* icon = "\U000F0F2F";  // default icon
+        
+        if (condition.find("clear-night") != std::string::npos) {
+          icon = "\U000F0594";
+        } else if (condition.find("cloudy") != std::string::npos) {
+          icon = "\U000F0590";
+        } else if (condition.find("fog") != std::string::npos) {
+          icon = "\U000F0591";
+        } else if (condition.find("hail") != std::string::npos) {
+          icon = "\U000F0592";
+        } else if (condition.find("lightning") != std::string::npos) {
+          icon = "\U000F0593";
+        } else if (condition.find("rainy") != std::string::npos) {
+          icon = "\U000F0597";
+        } else if (condition.find("pouring") != std::string::npos) {
+          icon = "\U000F0596";
+        } else if (condition.find("snowy") != std::string::npos) {
+          icon = "\U000F0598";
+        } else if (condition.find("sunny") != std::string::npos) {
+          icon = "\U000F0599";
+        } else if (condition.find("windy") != std::string::npos) {
+          icon = "\U000F059D";
+        } else if (condition.find("partlycloudy") != std::string::npos) {
+          icon = "\U000F0595";
+        }
+        
+        // Draw icon
+        it.print(hour3_x, forecast_base_y + icon_offset_y, id(icon_font_small), Color::WHITE, TextAlign::TOP_CENTER, icon);
+        
+        // Print temperature
+        char temp_str[16];
+        sprintf(temp_str, "%.0f°", id(forecast_hour3_temp).state);
+        it.print(hour3_x, forecast_base_y + temp_offset_y, id(font_medium), Color::WHITE, TextAlign::TOP_CENTER, temp_str);
+      }
+      
+      // Hour 4 forecast
+      if (id(forecast_hour4_condition).has_state() && id(forecast_hour4_temp).has_state()) {
+        int hour4_x = first_hour_x + (forecast_spacing * 3);
+        
+        // Get hour time
+        if (id(forecast_hour4_datetime).has_state()) {
+          std::string datetime_str = id(forecast_hour4_datetime).state;
+          struct tm tm = {};
+          strptime(datetime_str.c_str(), "%Y-%m-%dT%H:%M:%S%z", &tm);
+          
+          char hour_str[10];
+          if (tm.tm_hour == 0) {
+            sprintf(hour_str, "12 AM");
+          } else if (tm.tm_hour < 12) {
+            sprintf(hour_str, "%d AM", tm.tm_hour);
+          } else if (tm.tm_hour == 12) {
+            sprintf(hour_str, "12 PM");
+          } else {
+            sprintf(hour_str, "%d PM", tm.tm_hour - 12);
+          }
+          
+          // Print hour
+          it.print(hour4_x, forecast_base_y, id(font_medium), Color::WHITE, TextAlign::TOP_CENTER, hour_str);
+        } else {
+          it.print(hour4_x, forecast_base_y, id(font_medium), Color::WHITE, TextAlign::TOP_CENTER, "+4h");
+        }
+        
+        // Get condition icon
+        std::string condition = id(forecast_hour4_condition).state;
+        for (auto & c: condition) c = tolower(c);
+        
+        const char* icon = "\U000F0F2F";  // default icon
+        
+        if (condition.find("clear-night") != std::string::npos) {
+          icon = "\U000F0594";
+        } else if (condition.find("cloudy") != std::string::npos) {
+          icon = "\U000F0590";
+        } else if (condition.find("fog") != std::string::npos) {
+          icon = "\U000F0591";
+        } else if (condition.find("hail") != std::string::npos) {
+          icon = "\U000F0592";
+        } else if (condition.find("lightning") != std::string::npos) {
+          icon = "\U000F0593";
+        } else if (condition.find("rainy") != std::string::npos) {
+          icon = "\U000F0597";
+        } else if (condition.find("pouring") != std::string::npos) {
+          icon = "\U000F0596";
+        } else if (condition.find("snowy") != std::string::npos) {
+          icon = "\U000F0598";
+        } else if (condition.find("sunny") != std::string::npos) {
+          icon = "\U000F0599";
+        } else if (condition.find("windy") != std::string::npos) {
+          icon = "\U000F059D";
+        } else if (condition.find("partlycloudy") != std::string::npos) {
+          icon = "\U000F0595";
+        }
+        
+        // Draw icon
+        it.print(hour4_x, forecast_base_y + icon_offset_y, id(icon_font_small), Color::WHITE, TextAlign::TOP_CENTER, icon);
+        
+        // Print temperature
+        char temp_str[16];
+        sprintf(temp_str, "%.0f°", id(forecast_hour4_temp).state);
+        it.print(hour4_x, forecast_base_y + temp_offset_y, id(font_medium), Color::WHITE, TextAlign::TOP_CENTER, temp_str);
+      }
+      
+      // Draw outer border (shifted up and left)
+      it.rectangle(50, 0, 700, 480, Color::WHITE);
+      
+      // Debug info at bottom to help diagnose forecast issues
+      if (id(forecast_hour1_datetime).has_state()) {
+        it.printf(45, 565, id(font_tiny), Color::WHITE, TextAlign::BOTTOM_LEFT, "Hour1: %s", id(forecast_hour1_datetime).state.c_str());
       } else {
-        it.print(100, 330, id(font_small), Color::WHITE, "No condition data");
+        it.printf(45, 565, id(font_tiny), Color::WHITE, TextAlign::BOTTOM_LEFT, "Hour1 datetime unavailable");
       }
       
-      // Print temperature information
-      if (id(weather_temperature).has_state() && id(weather_temperature_unit).has_state()) {
-        char temp_str[32];
-        sprintf(temp_str, "Temperature: %.1f %s", id(weather_temperature).state, id(weather_temperature_unit).state.c_str());
-        it.print(100, 370, id(font_small), Color::WHITE, temp_str);
+      if (id(forecast_hour1_condition).has_state()) {
+        it.printf(45, 580, id(font_tiny), Color::WHITE, TextAlign::BOTTOM_LEFT, "Condition: %s", id(forecast_hour1_condition).state.c_str());
+      } else {
+        it.printf(45, 580, id(font_tiny), Color::WHITE, TextAlign::BOTTOM_LEFT, "Hour1 condition unavailable");
       }
-      
-      // Print humidity information
-      if (id(weather_humidity).has_state()) {
-        char humidity_str[32];
-        sprintf(humidity_str, "Humidity: %.0f%%", id(weather_humidity).state);
-        it.print(100, 410, id(font_small), Color::WHITE, humidity_str);
-      }
-      
-      // Print wind information
-      if (id(weather_wind_speed).has_state() && id(weather_wind_speed_unit).has_state()) {
-        char wind_str[64];
-        sprintf(wind_str, "Wind: %.1f %s from %.0f°", 
-                id(weather_wind_speed).state, 
-                id(weather_wind_speed_unit).state.c_str(),
-                id(weather_wind_bearing).state);
-        it.print(100, 450, id(font_small), Color::WHITE, wind_str);
-      }
-      
-      // Draw simple rectangle - adjusted to accommodate all content
-      it.rectangle(50, 0, 660, 510, Color::WHITE);
 
 # Add sensors to display
 sensor:
@@ -169,13 +477,33 @@ sensor:
     entity_id: weather.forecast_home
     attribute: pressure
     internal: true
+    
+  # Forecast Hour sensors (temperature) - Updated to use new sensors
+  - platform: homeassistant
+    id: forecast_hour1_temp
+    entity_id: sensor.forecast_hour_1_temperature
+    internal: true
+    
+  - platform: homeassistant
+    id: forecast_hour2_temp
+    entity_id: sensor.forecast_hour_2_temperature
+    internal: true
+    
+  - platform: homeassistant
+    id: forecast_hour3_temp
+    entity_id: sensor.forecast_hour_3_temperature
+    internal: true
+    
+  - platform: homeassistant
+    id: forecast_hour4_temp
+    entity_id: sensor.forecast_hour_4_temperature
+    internal: true
 
 # Add text sensors for string-based data
 text_sensor:
   - platform: homeassistant
     id: weather_condition
     entity_id: weather.forecast_home
-    attribute: condition
     internal: true
     
   - platform: homeassistant
@@ -194,6 +522,59 @@ text_sensor:
     id: weather_pressure_unit
     entity_id: weather.forecast_home
     attribute: pressure_unit
+    internal: true
+    
+  # Status text sensor for debugging
+  - platform: template
+    name: "E-Ink Display Status"
+    id: display_status
+    update_interval: 60s
+    lambda: |-
+      return {"Last update: " + id(time_sensor).now().strftime("%H:%M:%S")};
+    internal: false
+    
+  # Forecast Hour 1 text sensors - Updated to use new sensors
+  - platform: homeassistant
+    id: forecast_hour1_condition
+    entity_id: sensor.forecast_hour_1_condition
+    internal: true
+    
+  - platform: homeassistant
+    id: forecast_hour1_datetime
+    entity_id: sensor.forecast_hour_1_time
+    internal: true
+    
+  # Forecast Hour 2 text sensors - Updated to use new sensors
+  - platform: homeassistant
+    id: forecast_hour2_condition
+    entity_id: sensor.forecast_hour_2_condition
+    internal: true
+    
+  - platform: homeassistant
+    id: forecast_hour2_datetime
+    entity_id: sensor.forecast_hour_2_time
+    internal: true
+    
+  # Forecast Hour 3 text sensors - Updated to use new sensors
+  - platform: homeassistant
+    id: forecast_hour3_condition
+    entity_id: sensor.forecast_hour_3_condition
+    internal: true
+    
+  - platform: homeassistant
+    id: forecast_hour3_datetime
+    entity_id: sensor.forecast_hour_3_time
+    internal: true
+    
+  # Forecast Hour 4 text sensors - Updated to use new sensors
+  - platform: homeassistant
+    id: forecast_hour4_condition
+    entity_id: sensor.forecast_hour_4_condition
+    internal: true
+    
+  - platform: homeassistant
+    id: forecast_hour4_datetime
+    entity_id: sensor.forecast_hour_4_time
     internal: true
 
 time:
