@@ -1,0 +1,129 @@
+esphome:
+  name: eink
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  level: VERBOSE
+
+# Enable Home Assistant API
+api:
+  password: ""
+
+ota:
+  - platform: esphome
+    password: ""
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Eink Fallback Hotspot"
+    password: "S27YLtLSq60y"
+
+captive_portal:
+
+# E-ink display configuration - Fixed pins for Waveshare HAT
+# E-ink display configuration with all the key settings
+spi:
+  clk_pin: GPIO13
+  mosi_pin: GPIO14
+
+
+# Reference local font file
+font:
+  - file: "roboto.ttf"
+    id: font_small
+    size: 25
+  - file: "roboto.ttf"
+    id: font_medium
+    size: 60
+  - file: "roboto.ttf"
+    id: font_large
+    size: 100
+
+power_supply:
+  - id: epaper_power
+    pin: GPIO12  # Choose an available GPIO pin
+    enable_time: 200ms
+    keep_on_time: 10s
+
+display:
+  - platform: waveshare_epaper
+    id: my_display
+    model: 7.50inV2  # 7.5 inch V2 model
+    cs_pin: GPIO15 #GPIO15
+    dc_pin: GPIO27 #GPIO27
+    busy_pin: GPIO25 #GPIO25
+    reset_pin: GPIO26 #GPIO26
+    reset_duration: 2ms
+    rotation: 0
+    update_interval: 60s
+
+    lambda: |-
+      // Simple, reliable display code
+      it.fill(Color::WHITE);
+      
+      // Draw time in larger, simpler format
+      auto time = id(time_sensor).now();
+      if (time.is_valid()) {
+        int hour = time.hour % 12 == 0 ? 12 : time.hour % 12;
+        const char *am_pm = time.hour >= 12 ? "PM" : "AM";
+        
+        // Format time string properly
+        char time_str[16];
+        sprintf(time_str, "%02d:%02d %s", hour, time.minute, am_pm);
+        it.print(100, 100, id(font_large), Color::BLACK, time_str);
+        
+        // Format date string properly
+        char date_str[16];
+        sprintf(date_str, "%02d/%02d/%04d", time.month, time.day_of_month, time.year);
+        it.print(100, 220, id(font_medium), Color::BLACK, date_str);
+      }
+      
+      // Temperature display
+      if (id(outside_temp).has_state()) {
+        char temp_str[16];
+        sprintf(temp_str, "%.1f °C", id(outside_temp).state);
+        it.print(100, 300, id(font_medium), Color::BLACK, temp_str);
+      }
+      
+      // Draw simple rectangle
+      it.rectangle(50, 50, 660, 380, Color::BLACK);
+
+
+
+
+
+
+# Add sensors to display
+sensor:
+  - platform: uptime
+    name: "E-Ink Display Uptime"
+    id: uptime_sensor
+    update_interval: 60s
+
+  - platform: homeassistant
+    id: outside_temp
+    entity_id: sensor.outside_temperature
+    internal: true
+
+time:
+  - platform: homeassistant
+    id: time_sensor
+
+# Add a button to force display refresh
+button:
+  - platform: template
+    name: "Refresh E-Ink Display"
+    on_press:
+    - lambda: |-
+        id(my_display).fill(Color::WHITE);
+        id(my_display).update();
+    - component.update: my_display
