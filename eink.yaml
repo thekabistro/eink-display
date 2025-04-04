@@ -30,45 +30,46 @@ wifi:
 captive_portal:
 
 # E-ink display configuration - Fixed pins for Waveshare HAT
-# E-ink display configuration with all the key settings
 spi:
   clk_pin: GPIO13
   mosi_pin: GPIO14
 
-
 # Reference local font file
 font:
-  - file: "roboto.ttf"
+  - file: "opensans.ttf"
     id: font_small
     size: 25
-  - file: "roboto.ttf"
+  - file: "opensans.ttf"
     id: font_medium
     size: 60
-  - file: "roboto.ttf"
+  - file: "opensans.ttf"
     id: font_large
     size: 100
+  - file: "opensans.ttf"
+    id: font_tiny
+    size: 15
 
 power_supply:
   - id: epaper_power
     pin: GPIO12  # Choose an available GPIO pin
-    enable_time: 200ms
+    enable_time: 500ms
     keep_on_time: 10s
 
 display:
   - platform: waveshare_epaper
     id: my_display
     model: 7.50inV2  # 7.5 inch V2 model
-    cs_pin: GPIO15 #GPIO15
-    dc_pin: GPIO27 #GPIO27
-    busy_pin: GPIO25 #GPIO25
-    reset_pin: GPIO26 #GPIO26
-    reset_duration: 2ms
+    cs_pin: GPIO15
+    dc_pin: GPIO27
+    busy_pin: GPIO25
+    reset_pin: GPIO26
+    reset_duration: 2ms  
     rotation: 0
-    update_interval: 60s
+    update_interval: 300s
 
     lambda: |-
       // Simple, reliable display code
-      it.fill(Color::WHITE);
+      it.fill(Color::BLACK);
       
       // Draw time in larger, simpler format
       auto time = id(time_sensor).now();
@@ -79,28 +80,58 @@ display:
         // Format time string properly
         char time_str[16];
         sprintf(time_str, "%02d:%02d %s", hour, time.minute, am_pm);
-        it.print(100, 100, id(font_large), Color::BLACK, time_str);
+        it.print(100, 40, id(font_large), Color::WHITE, time_str);
         
         // Format date string properly
         char date_str[16];
         sprintf(date_str, "%02d/%02d/%04d", time.month, time.day_of_month, time.year);
-        it.print(100, 220, id(font_medium), Color::BLACK, date_str);
+        it.print(100, 160, id(font_medium), Color::WHITE, date_str);
       }
       
-      // Temperature display
-      if (id(outside_temp).has_state()) {
-        char temp_str[16];
-        sprintf(temp_str, "%.1f °C", id(outside_temp).state);
-        it.print(100, 300, id(font_medium), Color::BLACK, temp_str);
+      // Weather information title (smaller and moved down)
+      it.print(100, 260, id(font_small), Color::WHITE, "Weather:");
+      
+      // Try to display weather condition - fixed approach
+      if (id(weather_condition).has_state()) {
+        // Using a different approach to display the condition
+        std::string condition = id(weather_condition).state;
+        if (!condition.empty()) {
+          // Capitalize first letter if possible
+          condition[0] = toupper(condition[0]);
+          it.print(100, 330, id(font_small), Color::WHITE, condition.c_str());
+        } else {
+          it.print(100, 330, id(font_small), Color::WHITE, "Unknown condition");
+        }
+      } else {
+        it.print(100, 330, id(font_small), Color::WHITE, "No condition data");
       }
       
-      // Draw simple rectangle
-      it.rectangle(50, 50, 660, 380, Color::BLACK);
-
-
-
-
-
+      // Print temperature information
+      if (id(weather_temperature).has_state() && id(weather_temperature_unit).has_state()) {
+        char temp_str[32];
+        sprintf(temp_str, "Temperature: %.1f %s", id(weather_temperature).state, id(weather_temperature_unit).state.c_str());
+        it.print(100, 370, id(font_small), Color::WHITE, temp_str);
+      }
+      
+      // Print humidity information
+      if (id(weather_humidity).has_state()) {
+        char humidity_str[32];
+        sprintf(humidity_str, "Humidity: %.0f%%", id(weather_humidity).state);
+        it.print(100, 410, id(font_small), Color::WHITE, humidity_str);
+      }
+      
+      // Print wind information
+      if (id(weather_wind_speed).has_state() && id(weather_wind_speed_unit).has_state()) {
+        char wind_str[64];
+        sprintf(wind_str, "Wind: %.1f %s from %.0f°", 
+                id(weather_wind_speed).state, 
+                id(weather_wind_speed_unit).state.c_str(),
+                id(weather_wind_bearing).state);
+        it.print(100, 450, id(font_small), Color::WHITE, wind_str);
+      }
+      
+      // Draw simple rectangle - adjusted to accommodate all content
+      it.rectangle(50, 0, 660, 510, Color::WHITE);
 
 # Add sensors to display
 sensor:
@@ -108,10 +139,61 @@ sensor:
     name: "E-Ink Display Uptime"
     id: uptime_sensor
     update_interval: 60s
-
+    
   - platform: homeassistant
-    id: outside_temp
-    entity_id: sensor.outside_temperature
+    id: weather_temperature
+    entity_id: weather.forecast_home
+    attribute: temperature
+    internal: true
+    
+  - platform: homeassistant
+    id: weather_humidity
+    entity_id: weather.forecast_home
+    attribute: humidity
+    internal: true
+    
+  - platform: homeassistant
+    id: weather_wind_speed
+    entity_id: weather.forecast_home
+    attribute: wind_speed
+    internal: true
+    
+  - platform: homeassistant
+    id: weather_wind_bearing
+    entity_id: weather.forecast_home
+    attribute: wind_bearing
+    internal: true
+    
+  - platform: homeassistant
+    id: weather_pressure
+    entity_id: weather.forecast_home
+    attribute: pressure
+    internal: true
+
+# Add text sensors for string-based data
+text_sensor:
+  - platform: homeassistant
+    id: weather_condition
+    entity_id: weather.forecast_home
+    attribute: condition
+    internal: true
+    
+  - platform: homeassistant
+    id: weather_temperature_unit
+    entity_id: weather.forecast_home
+    attribute: temperature_unit
+    internal: true
+    
+  - platform: homeassistant
+    id: weather_wind_speed_unit
+    entity_id: weather.forecast_home
+    attribute: wind_speed_unit
+    internal: true
+    
+  - platform: homeassistant
+    id: weather_pressure_unit
+    entity_id: weather.forecast_home
+    attribute: pressure_unit
     internal: true
 
 time:
