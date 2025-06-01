@@ -1,0 +1,81 @@
+## In your HomeAssistant configuration.yaml file, add the following:
+
+template:
+  - trigger:
+      - platform: time_pattern
+        minutes: "/5"  # Update every 5 minutes
+    action:
+      - service: weather.get_forecasts
+        data:
+          type: hourly
+        target:
+          entity_id: weather.forecast_home
+        response_variable: hourly
+    sensor:
+      # Hour 1 forecast
+      - name: "Forecast Hour 1 Temperature"
+        unique_id: forecast_hour1_temperature
+        state: "{{ hourly['weather.forecast_home'].forecast[0].temperature }}"
+        unit_of_measurement: "°F"
+
+      - name: "Forecast Hour 1 Condition"
+        unique_id: forecast_hour1_condition
+        state: "{{ hourly['weather.forecast_home'].forecast[0].condition }}"
+
+      - name: "Forecast Hour 1 Time"
+        unique_id: forecast_hour1_time
+        state: >
+          {% set utc_time = hourly['weather.forecast_home'].forecast[0].datetime %}
+          {% set pst_time = utc_time | replace('Z', '+00:00') | as_datetime | as_local %}
+          {{ pst_time.isoformat() }}
+
+      # Hour 2 forecast
+      - name: "Forecast Hour 2 Temperature"
+        unique_id: forecast_hour2_temperature
+        state: "{{ hourly['weather.forecast_home'].forecast[1].temperature }}"
+        unit_of_measurement: "°F"
+
+      - name: "Forecast Hour 2 Condition"
+        unique_id: forecast_hour2_condition
+        state: "{{ hourly['weather.forecast_home'].forecast[1].condition }}"
+
+      - name: "Forecast Hour 2 Time"
+        unique_id: forecast_hour2_time
+        state: >
+          {% set utc_time = hourly['weather.forecast_home'].forecast[1].datetime %}
+          {% set pst_time = utc_time | replace('Z', '+00:00') | as_datetime | as_local %}
+          {{ pst_time.isoformat() }}
+
+      # Hour 3 forecast
+      - name: "Forecast Hour 3 Temperature"
+        unique_id: forecast_hour3_temperature
+        state: "{{ hourly['weather.forecast_home'].forecast[2].temperature }}"
+        unit_of_measurement: "°F"
+
+      - name: "Forecast Hour 3 Condition"
+        unique_id: forecast_hour3_condition
+        state: "{{ hourly['weather.forecast_home'].forecast[2].condition }}"
+
+      - name: "Forecast Hour 3 Time"
+        unique_id: forecast_hour3_time
+        state: >
+          {% set utc_time = hourly['weather.forecast_home'].forecast[2].datetime %}
+          {% set pst_time = utc_time | replace('Z', '+00:00') | as_datetime | as_local %}
+          {{ pst_time.isoformat() }}
+
+      # Hour 4 forecast
+      - name: "Forecast Hour 4 Temperature"
+        unique_id: forecast_hour4_temperature
+        state: "{{ hourly['weather.forecast_home'].forecast[3].temperature }}"
+        unit_of_measurement: "°F"
+
+      - name: "Forecast Hour 4 Condition"
+        unique_id: forecast_hour4_condition
+        state: "{{ hourly['weather.forecast_home'].forecast[3].condition }}"
+
+      - name: "Forecast Hour 4 Time"
+        unique_id: forecast_hour4_time
+        state: >
+          {% set utc_time = hourly['weather.forecast_home'].forecast[3].datetime %}
+          {% set pst_time = utc_time | replace('Z', '+00:00') | as_datetime | as_local %}
+          {{ pst_time.isoformat() }}%
