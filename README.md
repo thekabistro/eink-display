@@ -41,7 +41,7 @@ To update and flash the configuration to your ESP32:
 esphome run eink.yaml
 ```
 
-## Wiring Instructions
+### Wiring Instructions
 
 Connect the ESP32 to the Waveshare E-Ink display using the following pin configuration:
 
@@ -55,17 +55,12 @@ Connect the ESP32 to the Waveshare E-Ink display using the following pin configu
 | GPIO26    | RST (Reset) |
 | GPIO12    | Power Supply Pin |
 
-## Features
 
-The weather dashboard displays:
-- Current date and time
-- Hourly weather forecast for the next 4 hours
-  - Temperature
-  - Weather condition with icons
-  - Time of forecast
-- Updates every 5 minutes (300 seconds)
 
-The dashboard pulls data from Home Assistant's weather integration, displaying it in a clean, easy-to-read format on the e-ink display.
+## Project Files
+
+- `eink.yaml`: ESPHome configuration for the e-ink display
+- `configuration.yaml`: Home Assistant configuration for weather data integration
 
 ## Troubleshooting
 
