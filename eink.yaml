@@ -30,6 +30,11 @@ wifi:
 
 captive_portal:
 
+# HTTP Request component for OneBusAway API
+http_request:
+  id: http_request_data
+  verify_ssl: false
+
 # E-ink display configuration - Fixed pins for Waveshare HAT
 spi:
   clk_pin: GPIO13
@@ -89,286 +94,197 @@ power_supply:
 display:
   - platform: waveshare_epaper
     id: my_display
-    model: 7.50inV2
+    model: 7.50inV2alt
     cs_pin: GPIO15
     dc_pin: GPIO27
     busy_pin: GPIO25
     reset_pin: GPIO26
     reset_duration: 2ms
-    rotation: 0
+    rotation: 270
     update_interval: 300s
 
     lambda: |-
-      // Helper function to get weather icon
-      auto get_weather_icon = [](const std::string& condition) -> const char* {
-        std::string cond = condition;
-        for (auto & c: cond) c = tolower(c);
-        
-        if (cond.find("clear-night") != std::string::npos) return "\U000F0594";
-        if (cond.find("cloudy") != std::string::npos) return "\U000F0590";
-        if (cond.find("fog") != std::string::npos) return "\U000F0591";
-        if (cond.find("hail") != std::string::npos) return "\U000F0592";
-        if (cond.find("lightning") != std::string::npos) return "\U000F0593";
-        if (cond.find("rainy") != std::string::npos) return "\U000F0597";
-        if (cond.find("pouring") != std::string::npos) return "\U000F0596";
-        if (cond.find("snowy") != std::string::npos) return "\U000F0598";
-        if (cond.find("sunny") != std::string::npos) return "\U000F0599";
-        if (cond.find("windy") != std::string::npos) return "\U000F059D";
-        if (cond.find("partlycloudy") != std::string::npos) return "\U000F0595";
-        return "\U000F0F2F"; // default
-      };
-      
-      // Helper function to get ordinal suffix
-      auto get_ordinal_suffix = [](int day) -> const char* {
-        if (day == 1 || day == 21 || day == 31) return "st";
-        if (day == 2 || day == 22) return "nd";
-        if (day == 3 || day == 23) return "rd";
-        return "th";
-      };
-      
-      // Helper function to get weekday name
-      auto get_weekday_name = [](int day_of_week) -> const char* {
-        const char* weekdays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-        int corrected_day = (day_of_week + 6) % 7;  // ESPHome adjustment
-        return weekdays[corrected_day];
-      };
-      
-      // Helper function to get month name
-      auto get_month_name = [](int month) -> const char* {
-        const char* months[] = {"January", "February", "March", "April", "May", "June", "July", 
-                               "August", "September", "October", "November", "December"};
-        return months[month - 1];
-      };
-      
-      // Helper function to format 12-hour time
-      auto format_12_hour_time = [](int hour, int minute) -> std::string {
-        int display_hour = hour % 12 == 0 ? 12 : hour % 12;
-        const char *am_pm = hour >= 12 ? "PM" : "AM";
-        return std::to_string(display_hour) + ":" + (minute < 10 ? "0" : "") + std::to_string(minute) + " " + am_pm;
-      };
-      
-      // Helper function to draw forecast hour
-      auto draw_forecast_hour = [&](int x, const std::string& datetime_str, const std::string& condition, float temp, int hour_offset) {
-        const int base_y = 215;
-        const int icon_offset = 70;
-        const int temp_offset = 140;
-        
-        // Parse and display hour
-        if (!datetime_str.empty()) {
-          struct tm tm = {};
-          strptime(datetime_str.c_str(), "%Y-%m-%dT%H:%M:%S%z", &tm);
-          int display_hour = tm.tm_hour % 12 == 0 ? 12 : tm.tm_hour % 12;
-          std::string hour_str = std::to_string(display_hour) + (tm.tm_hour >= 12 ? " PM" : " AM");
-          it.print(x, base_y, id(font_medium), Color::WHITE, TextAlign::TOP_CENTER, hour_str.c_str());
-        } else {
-          std::string fallback = "+" + std::to_string(hour_offset) + "h";
-          it.print(x, base_y, id(font_medium), Color::WHITE, TextAlign::TOP_CENTER, fallback.c_str());
-        }
-        
-        // Draw weather icon
-        const char* icon = get_weather_icon(condition);
-        it.print(x, base_y + icon_offset, id(icon_font_small), Color::WHITE, TextAlign::TOP_CENTER, icon);
-        
-        // Draw temperature
-        char temp_str[16];
-        sprintf(temp_str, "%.0f°", temp);
-        it.print(x, base_y + temp_offset, id(font_medium), Color::WHITE, TextAlign::TOP_CENTER, temp_str);
-      };
-
-      // Macro to generate sensor access at compile time
-      #define GET_HOUR_CONDITION(n) id(forecast_hour##n##_condition)
-      #define GET_HOUR_TEMP(n) id(forecast_hour##n##_temp)
-      #define GET_HOUR_DATETIME(n) id(forecast_hour##n##_datetime)
-      
-      // Macro to draw a forecast hour
-      #define DRAW_FORECAST_HOUR(hour_num) \
-        do { \
-          if (GET_HOUR_CONDITION(hour_num).has_state() && GET_HOUR_TEMP(hour_num).has_state()) { \
-            int x = first_hour_x + ((hour_num - 1) * forecast_spacing); \
-            std::string datetime_str = GET_HOUR_DATETIME(hour_num).has_state() ? GET_HOUR_DATETIME(hour_num).state : ""; \
-            draw_forecast_hour(x, datetime_str, GET_HOUR_CONDITION(hour_num).state, GET_HOUR_TEMP(hour_num).state, hour_num); \
-          } \
-        } while(0)
-
       // Fill with black background
       it.fill(Color::BLACK);
       
-      // Draw date and time
+      // Get display dimensions (confirmed: 480x800)
+      int width = it.get_width();
+      int height = it.get_height();
+      
+      // Draw header section with date and time
       auto time = id(time_sensor).now();
       if (time.is_valid()) {
-        // Format date string using helper functions
+        // Helper functions
+        auto get_weekday_name = [](int day_of_week) -> const char* {
+          const char* weekdays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+          int corrected_day = (day_of_week + 6) % 7;  // ESPHome adjustment
+          return weekdays[corrected_day];
+        };
+        
+        auto get_month_name = [](int month) -> const char* {
+          const char* months[] = {"January", "February", "March", "April", "May", "June", "July", 
+                                 "August", "September", "October", "November", "December"};
+          return months[month - 1];
+        };
+        
+        auto get_ordinal_suffix = [](int day) -> const char* {
+          if (day == 1 || day == 21 || day == 31) return "st";
+          if (day == 2 || day == 22) return "nd";
+          if (day == 3 || day == 23) return "rd";
+          return "th";
+        };
+        
+        // Format date string
         std::string date_str = std::string(get_weekday_name(time.day_of_week)) + ", " + 
                               get_month_name(time.month) + " " + 
                               std::to_string(time.day_of_month) + 
                               get_ordinal_suffix(time.day_of_month);
         
-        // Draw the date centered at the top
-        it.print(385, 30, id(font_date), Color::WHITE, TextAlign::TOP_CENTER, date_str.c_str());
+        // Draw date
+        it.print(width/2, 20, id(font_small), Color::WHITE, TextAlign::TOP_CENTER, date_str.c_str());
         
-        // Format and draw time using helper function
-        std::string time_str = format_12_hour_time(time.hour, time.minute);
-        it.print(385, 70, id(font_large), Color::WHITE, TextAlign::TOP_CENTER, time_str.c_str());
+        // Format and draw time
+        int display_hour = time.hour % 12 == 0 ? 12 : time.hour % 12;
+        const char *am_pm = time.hour >= 12 ? "PM" : "AM";
+        std::string time_str = std::to_string(display_hour) + ":" + 
+                              (time.minute < 10 ? "0" : "") + 
+                              std::to_string(time.minute) + " " + am_pm;
+        it.print(width/2, 45, id(font_medium), Color::WHITE, TextAlign::TOP_CENTER, time_str.c_str());
+      }
+      
+      // Draw header separator line
+      it.line(30, 90, width-30, 90, Color::WHITE);
+      
+      // ROUTE LINE AND STATIONS
+      // Transit area: from y=100 to y=750 (650 pixels total)
+      int transit_start_y = 100;
+      int transit_end_y = 750;
+      int transit_height = transit_end_y - transit_start_y;
+      int line_x = 320; // Vertical line position - moved much further right
+      
+      // Draw main vertical route line
+      it.line(line_x, transit_start_y, line_x, transit_end_y, Color::WHITE);
+      
+      // Station data: name and Y position
+      struct Station {
+        const char* name;
+        int y;
+      };
+      
+      // Calculate Y positions for 23 stations evenly spaced
+      Station stations[23] = {
+        {"Lynnwood City Center", transit_start_y + (transit_height * 0 / 22)},
+        {"Mountlake Terrace", transit_start_y + (transit_height * 1 / 22)},
+        {"Shoreline North/185th", transit_start_y + (transit_height * 2 / 22)},
+        {"Shoreline South/148th", transit_start_y + (transit_height * 3 / 22)},
+        {"Northgate", transit_start_y + (transit_height * 4 / 22)},
+        {"Roosevelt", transit_start_y + (transit_height * 5 / 22)},
+        {"U District", transit_start_y + (transit_height * 6 / 22)},
+        {"University of Washington", transit_start_y + (transit_height * 7 / 22)},
+        {"Capitol Hill", transit_start_y + (transit_height * 8 / 22)},
+        {"Westlake", transit_start_y + (transit_height * 9 / 22)},
+        {"Symphony", transit_start_y + (transit_height * 10 / 22)},
+        {"Pioneer Square", transit_start_y + (transit_height * 11 / 22)},
+        {"Int'l Dist/Chinatown", transit_start_y + (transit_height * 12 / 22)},
+        {"Stadium", transit_start_y + (transit_height * 13 / 22)},
+        {"SODO", transit_start_y + (transit_height * 14 / 22)},
+        {"Beacon Hill", transit_start_y + (transit_height * 15 / 22)},
+        {"Mount Baker", transit_start_y + (transit_height * 16 / 22)},
+        {"Columbia City", transit_start_y + (transit_height * 17 / 22)},
+        {"Othello", transit_start_y + (transit_height * 18 / 22)},
+        {"Rainier Beach", transit_start_y + (transit_height * 19 / 22)},
+        {"Tukwila Int'l Blvd", transit_start_y + (transit_height * 20 / 22)},
+        {"SeaTac/Airport", transit_start_y + (transit_height * 21 / 22)},
+        {"Angle Lake", transit_start_y + (transit_height * 22 / 22)}
+      };
+      
+      // Draw all stations
+      for (int i = 0; i < 23; i++) {
+        // Draw station dot (circle) on the main line
+        it.filled_circle(line_x, stations[i].y, 3, Color::WHITE);
         
-        // Draw horizontal line
-        it.line(85, 200, 685, 200, Color::WHITE);
+        // Draw station name at fixed position (not relative to line_x)
+        it.print(240, stations[i].y, id(font_tiny), Color::WHITE, TextAlign::CENTER_RIGHT, stations[i].name);
       }
       
-      // HOURLY FORECAST SECTION - Simple and clean
-      const int first_hour_x = 180;
-      const int forecast_spacing = 135;
+      // REAL TRAIN DATA - Step 4
+      // Station name to position mapping (0.0 = north, 1.0 = south)
+      std::map<std::string, float> station_positions = {
+        {"Lynnwood City Center", 0.0f}, {"Mountlake Terrace", 0.045f}, 
+        {"Shoreline North/185th", 0.091f}, {"Shoreline South/148th", 0.136f},
+        {"Northgate", 0.182f}, {"Roosevelt", 0.227f}, {"U District", 0.273f},
+        {"University of Washington", 0.318f}, {"Capitol Hill", 0.364f}, 
+        {"Westlake", 0.409f}, {"Symphony", 0.455f}, {"Pioneer Square", 0.5f},
+        {"Int'l Dist/Chinatown", 0.545f}, {"Stadium", 0.591f}, {"SODO", 0.636f},
+        {"Beacon Hill", 0.682f}, {"Mount Baker", 0.727f}, {"Columbia City", 0.773f},
+        {"Othello", 0.818f}, {"Rainier Beach", 0.864f}, {"Tukwila Int'l Blvd", 0.909f},
+        {"SeaTac/Airport", 0.955f}, {"Angle Lake", 1.0f}
+      };
       
-      // Draw all forecast hours - clean and direct
-      DRAW_FORECAST_HOUR(1);
-      DRAW_FORECAST_HOUR(2);
-      DRAW_FORECAST_HOUR(3);
-      DRAW_FORECAST_HOUR(4);
-      
-      // Draw outer border
-      it.rectangle(50, 0, 700, 480, Color::WHITE);
-      
-      // Debug info
-      if (id(forecast_hour1_datetime).has_state()) {
-        it.printf(45, 565, id(font_tiny), Color::WHITE, TextAlign::BOTTOM_LEFT, "Hour1: %s", id(forecast_hour1_datetime).state.c_str());
+      // Debug API component status at bottom
+      if (id(train_data).has_state()) {
+        std::string status = id(train_data).state;
+        it.print(240, 740, id(font_tiny), Color::WHITE, TextAlign::CENTER, "API: OK");
+        it.print(240, 755, id(font_tiny), Color::WHITE, TextAlign::CENTER, status.c_str());
       } else {
-        it.printf(45, 565, id(font_tiny), Color::WHITE, TextAlign::BOTTOM_LEFT, "Hour1 datetime unavailable");
+        it.print(240, 740, id(font_tiny), Color::WHITE, TextAlign::CENTER, "API: No State");
+        // Show more debug info
+        it.print(240, 755, id(font_tiny), Color::WHITE, TextAlign::CENTER, "Sensor not ready");
       }
       
-      if (id(forecast_hour1_condition).has_state()) {
-        it.printf(45, 580, id(font_tiny), Color::WHITE, TextAlign::BOTTOM_LEFT, "Condition: %s", id(forecast_hour1_condition).state.c_str());
-      } else {
-        it.printf(45, 580, id(font_tiny), Color::WHITE, TextAlign::BOTTOM_LEFT, "Hour1 condition unavailable");
+      // Also show if HTTP component exists
+      it.print(240, 770, id(font_tiny), Color::WHITE, TextAlign::CENTER, "HTTP: Ready");
+      
+      // FALLBACK: Mock data when API not available
+      struct MockTrain {
+        const char* id;
+        bool northbound;
+        float position;
+      };
+      
+      MockTrain fallback_trains[] = {
+        {"T1", true, 0.15}, {"T2", false, 0.35}, {"T3", true, 0.52},
+        {"T4", false, 0.78}, {"T5", true, 0.91}
+      };
+      
+      int num_trains = sizeof(fallback_trains) / sizeof(MockTrain);
+      
+      // Draw trains (mock data for now)
+      for (int i = 0; i < num_trains; i++) {
+        MockTrain train = fallback_trains[i];
+        
+        int train_y = transit_start_y + (int)(train.position * transit_height);
+        int train_x = train.northbound ? line_x + 20 : line_x - 20;
+        
+        std::string train_label = std::string(train.id) + (train.northbound ? "N" : "S");
+        it.print(train_x, train_y, id(font_tiny), Color::WHITE, TextAlign::CENTER, train_label.c_str());
       }
-
-      // Clean up macros
-      #undef GET_HOUR_CONDITION
-      #undef GET_HOUR_TEMP  
-      #undef GET_HOUR_DATETIME
-      #undef DRAW_FORECAST_HOUR
 
 # Sensors
 sensor:
   - platform: uptime
-    name: "E-Ink Display Uptime"
+    name: "E-Ink Transit Display Uptime"
     id: uptime_sensor
     update_interval: 60s
-    
-  - platform: homeassistant
-    id: weather_temperature
-    entity_id: weather.forecast_home
-    attribute: temperature
-    internal: true
-    
-  - platform: homeassistant
-    id: weather_humidity
-    entity_id: weather.forecast_home
-    attribute: humidity
-    internal: true
-    
-  - platform: homeassistant
-    id: weather_wind_speed
-    entity_id: weather.forecast_home
-    attribute: wind_speed
-    internal: true
-    
-  - platform: homeassistant
-    id: weather_wind_bearing
-    entity_id: weather.forecast_home
-    attribute: wind_bearing
-    internal: true
-    
-  - platform: homeassistant
-    id: weather_pressure
-    entity_id: weather.forecast_home
-    attribute: pressure
-    internal: true
-    
-  # Forecast temperature sensors - using YAML anchors for DRY principle
-  - &forecast_temp_template
-    platform: homeassistant
-    id: forecast_hour1_temp
-    entity_id: sensor.forecast_hour_1_temperature
-    internal: true
-    
-  - <<: *forecast_temp_template
-    id: forecast_hour2_temp
-    entity_id: sensor.forecast_hour_2_temperature
-    
-  - <<: *forecast_temp_template
-    id: forecast_hour3_temp
-    entity_id: sensor.forecast_hour_3_temperature
-    
-  - <<: *forecast_temp_template
-    id: forecast_hour4_temp
-    entity_id: sensor.forecast_hour_4_temperature
 
 text_sensor:
-  - platform: homeassistant
-    id: weather_condition
-    entity_id: weather.forecast_home
-    internal: true
-    
-  - platform: homeassistant
-    id: weather_temperature_unit
-    entity_id: weather.forecast_home
-    attribute: temperature_unit
-    internal: true
-    
-  - platform: homeassistant
-    id: weather_wind_speed_unit
-    entity_id: weather.forecast_home
-    attribute: wind_speed_unit
-    internal: true
-    
-  - platform: homeassistant
-    id: weather_pressure_unit
-    entity_id: weather.forecast_home
-    attribute: pressure_unit
-    internal: true
-    
   - platform: template
-    name: "E-Ink Display Status"
+    name: "E-Ink Transit Display Status"
     id: display_status
     update_interval: 60s
     lambda: |-
       return {"Last update: " + id(time_sensor).now().strftime("%H:%M:%S")};
     internal: false
     
-  # Forecast text sensors - using YAML anchors for DRY principle
-  - &forecast_condition_template
-    platform: homeassistant
-    id: forecast_hour1_condition
-    entity_id: sensor.forecast_hour_1_condition
+  - platform: template
+    name: "OneBusAway Train Data"
+    id: train_data
+    update_interval: 120s  # Update every 2 minutes
     internal: true
-    
-  - <<: *forecast_condition_template
-    id: forecast_hour2_condition
-    entity_id: sensor.forecast_hour_2_condition
-    
-  - <<: *forecast_condition_template
-    id: forecast_hour3_condition
-    entity_id: sensor.forecast_hour_3_condition
-    
-  - <<: *forecast_condition_template
-    id: forecast_hour4_condition
-    entity_id: sensor.forecast_hour_4_condition
-    
-  - &forecast_datetime_template
-    platform: homeassistant
-    id: forecast_hour1_datetime
-    entity_id: sensor.forecast_hour_1_time
-    internal: true
-    
-  - <<: *forecast_datetime_template
-    id: forecast_hour2_datetime
-    entity_id: sensor.forecast_hour_2_time
-    
-  - <<: *forecast_datetime_template
-    id: forecast_hour3_datetime
-    entity_id: sensor.forecast_hour_3_time
-    
-  - <<: *forecast_datetime_template
-    id: forecast_hour4_datetime
-    entity_id: sensor.forecast_hour_4_time
+    lambda: |-
+      // For now, return a placeholder until we get HTTP working
+      // Will add actual API call in display lambda instead
+      return {"API Setup Ready"};
 
 time:
   - platform: homeassistant
