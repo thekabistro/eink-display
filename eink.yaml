@@ -63,11 +63,12 @@ font:
   - file: "fonts/opensans.ttf"
     id: font_date
     size: 40
-  # Include Material Design Icons font with specified glyphs
+  # Consolidate all icons into a single resource
   - file: "fonts/materialdesignicons-webfont.ttf"
     id: icon_font
     size: 100
-    glyphs: &weather_glyphs
+    glyphs: &all_icons
+      # Weather
       - "\U000F0590" # mdi-weather-cloudy
       - "\U000F0F2F" # mdi-weather-cloudy-alert
       - "\U000F0591" # mdi-weather-fog
@@ -83,10 +84,26 @@ font:
       - "\U000F0599" # mdi-weather-sunny
       - "\U000F059D" # mdi-weather-windy
       - "\U000F059E" # mdi-weather-windy-variant
+      # UI
+      - "\U000F012C" # mdi-check-box-outline
+      # Train Icons
+      - "\U000F052C" # mdi-train
+      - "\U000F08C4" # mdi-train-variant
+      # Legend Icons
+      - "\U000F004B" # mdi-arrow-down-drop-circle-outline
+      - "\U000F0063" # mdi-arrow-up-drop-circle-outline
   - file: "fonts/materialdesignicons-webfont.ttf"
     id: icon_font_small
     size: 80
-    glyphs: *weather_glyphs
+    glyphs: *all_icons
+  - file: "fonts/materialdesignicons-webfont.ttf"
+    id: icon_font_tiny
+    size: 25
+    glyphs: *all_icons
+  - file: "fonts/materialdesignicons-webfont.ttf"
+    id: icon_font_train
+    size: 20
+    glyphs: *all_icons
 
 power_supply:
   - id: epaper_power
@@ -113,28 +130,34 @@ display:
       int width = it.get_width();
       int height = it.get_height();
       
-      // Draw header section with date and time
+      // Header
+      int header_y = 38;
       auto time = id(time_sensor).now();
       if (time.is_valid()) {
-        it.printf(width/2, 20, id(font_small), Color::WHITE, TextAlign::TOP_CENTER, "%s, %s %d%s",
-          time.strftime("%A").c_str(),
-          time.strftime("%B").c_str(),
-          time.day_of_month,
-          (time.day_of_month % 10 == 1 && time.day_of_month != 11) ? "st" :
-          (time.day_of_month % 10 == 2 && time.day_of_month != 12) ? "nd" :
-          (time.day_of_month % 10 == 3 && time.day_of_month != 13) ? "rd" : "th"
-        );
-        it.printf(width/2, 45, id(font_medium), Color::WHITE, TextAlign::TOP_CENTER, "%s", time.strftime("%I:%M %p").c_str());
+        it.printf(30, header_y, id(font_tiny), Color::WHITE, TextAlign::TOP_LEFT, "%s", time.strftime("%I:%M %p").c_str());
       }
       
-      // Draw header separator line
-      it.line(30, 90, width-30, 90, Color::WHITE);
-      
+      if (id(train_positions).has_state()) {
+        std::string pos_str = id(train_positions).state;
+        std::stringstream pos_ss(pos_str);
+        std::string segment;
+        int train_count = 0;
+        while(std::getline(pos_ss, segment, ',')) {
+           train_count++;
+        }
+        it.printf(width - 55, header_y, id(font_tiny), Color::WHITE, TextAlign::TOP_RIGHT, "%d trains", train_count);
+        it.printf(width - 30, header_y, id(icon_font_tiny), Color::WHITE, TextAlign::TOP_RIGHT, "\U000F012C");
+      }
+
       // ROUTE LINE AND STATIONS
-      int transit_start_y = 100;
-      int transit_end_y = 750;
-      int transit_height = transit_end_y - transit_start_y;
+      int transit_start_y = 73;
+      int transit_height = 600; // Fixed smaller height to squish stations
+      int transit_end_y = transit_start_y + transit_height;
       int line_x = 320;
+
+      // Legend Icons
+      it.print(line_x - 15, header_y, id(icon_font_tiny), Color::WHITE, TextAlign::TOP_CENTER, "\U000F004B"); // Southbound
+      it.print(line_x + 15, header_y, id(icon_font_tiny), Color::WHITE, TextAlign::TOP_CENTER, "\U000F0063"); // Northbound
       
       it.line(line_x, transit_start_y, line_x, transit_end_y, Color::WHITE);
       
@@ -143,11 +166,11 @@ display:
         "Northgate", "Roosevelt", "U District", "University of Washington", "Capitol Hill",
         "Westlake", "Symphony", "Pioneer Square", "Int'l Dist/Chinatown", "Stadium", "SODO",
         "Beacon Hill", "Mount Baker", "Columbia City", "Othello", "Rainier Beach",
-        "Tukwila Int'l Blvd", "SeaTac/Airport", "Angle Lake"
+        "Tukwila Int'l Blvd", "SeaTac/Airport", "Angle Lake", "Kent Des Moines", "Star Lake", "Federal Way Downtown"
       };
       
-      for (int i = 0; i < 23; i++) {
-        int y = transit_start_y + (int)((float)i / 22.0 * transit_height);
+      for (int i = 0; i < 26; i++) {
+        int y = transit_start_y + (int)((float)i / 25.0 * transit_height);
         it.filled_circle(line_x, y, 3, Color::WHITE);
         it.print(240, y, id(font_tiny), Color::WHITE, TextAlign::CENTER_RIGHT, station_names[i]);
       }
@@ -178,11 +201,11 @@ display:
             int direction = directions[i];
 
             int train_y = transit_start_y + (int)(progress * transit_height);
-            int train_x = (direction == 1) ? line_x + 20 : line_x - 20;
-
-            it.filled_rectangle(train_x - 8, train_y - 4, 16, 8, Color::WHITE);
+            int train_x = (direction == 1) ? line_x + 15 : line_x - 15;
+            
+            const char* icon = (direction == 1) ? "\U000F052C" : "\U000F08C4"; // up or down circle arrow
+            it.print(train_x, train_y, id(icon_font_train), Color::WHITE, TextAlign::CENTER, icon);
           }
-          it.printf(240, 765, id(font_tiny), Color::WHITE, TextAlign::CENTER, "%d trains", positions.size());
         } else {
           it.print(240, 750, id(font_tiny), Color::WHITE, TextAlign::CENTER, "Data Mismatch");
         }
@@ -195,16 +218,16 @@ sensor:
   - platform: uptime
     name: "E-Ink Transit Display Uptime"
     id: uptime_sensor
-    update_interval: 60s
+    update_interval: 300s
 
 text_sensor:
   - platform: homeassistant
     id: train_positions
-    entity_id: sensor.train_positions
+    entity_id: sensor.link_positions
     internal: true
   - platform: homeassistant
     id: train_directions
-    entity_id: sensor.train_directions
+    entity_id: sensor.link_directions
     internal: true
     on_value:
       # Update the display whenever the second sensor updates
