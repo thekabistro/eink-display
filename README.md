@@ -2,11 +2,18 @@
 
 This project is an ESP32-based weather dashboard that displays information on a 7.5-inch e-ink display. It is based on [esphome-weatherman-dashboard](https://github.com/Madelena/esphome-weatherman-dashboard) by Madelena.
 
-## History
+## Project Journey
 
-I started out with a weather dashboard (V1), but then decided to turn it into a display for train line information with real-time data from OneBusAway (V2). 
+This project began as a V1 weather dashboard, pulling data from Home Assistant to create a daily "at-a-glance" weather display. The goal was to have a low-power, high-contrast display that was always on.
 
-In the process, there were two major callouts: the BUSY pin was inverted, and the display type was wrong.
+The project then evolved into V2, a real-time transit display for Seattle's Link light rail, using data from the OneBusAway API. This required a significant refactor of the original codebase to handle the new data source and display layout.
+
+### Key Learnings & Modifications
+
+During the transition to the transit display, a couple of key hardware and configuration challenges emerged:
+
+*   **Incorrect Display Model**: The initial configuration used a standard display model, but the specific Waveshare 7.5" V2 display required the `7.50inV2alt` model in ESPHome for proper operation.
+*   **Inverted BUSY Pin**: The BUSY pin on this particular display is inverted. The ESPHome configuration required `inverted: true` for the `busy_pin` to ensure the ESP32 could correctly read the display's status.
 
 Mine looks like this:  
 
@@ -16,7 +23,7 @@ Mine looks like this:
 
 This project uses the following hardware:
 - ESP32 Board - [Amazon Link](https://www.amazon.com/dp/B07M5CNP3B)
-- Waveshare 7.5inch E-Ink Display HAT (800×480 Resolution, SPI Interface) - [Amazon Link](https://www.amazon.com/dp/B075R4QY3L) 
+- Waveshare 7.5inch E-Ink Display V2 (800×480 Resolution, SPI Interface) - [Amazon Link](https://www.amazon.com/dp/B075R4QY3L) 
 
 ## Prerequisites
 
@@ -49,7 +56,9 @@ esphome run eink.yaml
 
 ### Wiring Instructions
 
-Connect the ESP32 to the Waveshare E-Ink display using the following pin configuration:
+Connect the ESP32 to the Waveshare E-Ink display using the following pin configuration. 
+
+**Note**: The `BUSY` pin for this display is inverted. See the `eink.yaml` for the correct configuration (`inverted: true`).
 
 | ESP32 Pin | E-Ink Display |
 |-----------|---------------|
