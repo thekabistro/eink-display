@@ -4,20 +4,25 @@ This project is an ESP32-based weather dashboard that displays information on a 
 
 ## Project Journey
 
-This project began as a V1 weather dashboard, pulling data from Home Assistant to create a daily "at-a-glance" weather display. The goal was to have a low-power, high-contrast display that was always on.
+This project began as a weather dashboard, pulling data from Home Assistant to create a daily "at-a-glance" weather display.  This is V1.  
 
-The project then evolved into V2, a real-time transit display for Seattle's Link light rail, using data from the OneBusAway API. This required a significant refactor of the original codebase to handle the new data source and display layout.
+At some point, I decided it should become a real-time transit display for Seattle's Link light rail.  This is V2.  
 
-### Key Learnings & Modifications
+During this shift, I realized a couple issues from V1:  
 
-During the transition to the transit display, a couple of key hardware and configuration challenges emerged:
-
-*   **Incorrect Display Model**: The initial configuration used a standard display model, but the specific Waveshare 7.5" V2 display required the `7.50inV2alt` model in ESPHome for proper operation.
+*   **Incorrect Display Model**: The initial configuration was wrong and needed to be `7.50inV2alt`.  The screen was frequently grey and got worse over time.  
 *   **Inverted BUSY Pin**: The BUSY pin on this particular display is inverted. The ESPHome configuration required `inverted: true` for the `busy_pin` to ensure the ESP32 could correctly read the display's status.
 
-Mine looks like this:  
+The other fun part: The ESP32 does not have enough memory to handle the API output.  I initially tried to have the ESP32 directly pull the data, but that overflowed every time.  So, we use Home Assistant to parse the output from the API.  
 
-![E-Ink Display](demo/demo.jpg)
+V2:
+
+![V2 Transit Display](demo/v2.jpg)
+
+V1:
+
+
+![Weather Display](demo/demo.jpg)
 
 ## Hardware
 
@@ -66,16 +71,15 @@ Connect the ESP32 to the Waveshare E-Ink display using the following pin configu
 | GPIO14    | MOSI (SPI Data) |
 | GPIO15    | CS (Chip Select) |
 | GPIO27    | DC (Data/Command) |
-| GPIO25    | BUSY |
+| GPIO25    | BUSY [INVERTED] |
 | GPIO26    | RST (Reset) |
 | GPIO12    | Power Supply Pin |
-
 
 
 ## Project Files
 
 - `eink.yaml`: ESPHome configuration for the e-ink display
-- `configuration.yaml`: Home Assistant configuration for weather data integration
+- `configuration.yaml`: Home Assistant configuration
 
 ## Troubleshooting
 
@@ -84,12 +88,15 @@ If you experience ghosting or the screen not displaying correctly, check the mod
 
 ### Home Assistant Hourly Weather Entities
 The weather forecast functionality requires proper setup in Home Assistant. You will need to:
-1. Configure a weather integration with API access in Home Assistant
-2. Add the necessary forecast sensors to your Home Assistant `configuration.yaml` file
-3. Make sure the entity IDs in your `eink.yaml` file match those in Home Assistant
+- As written right now, this uses O
 
 ## Credits
 This project is based on [esphome-weatherman-dashboard](https://github.com/Madelena/esphome-weatherman-dashboard).
+
+V2:
+Inspo taken from:
+- [https://github.com/astolarz/link-board](https://github.com/astolarz/link-board)
+- [https://github.com/waldenhillegass/link-map](https://github.com/waldenhillegass/link-map)
 
 
 
