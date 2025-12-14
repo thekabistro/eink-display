@@ -2,6 +2,12 @@
 
 This project is an ESP32-based weather dashboard that displays information on a 7.5-inch e-ink display. It is based on [esphome-weatherman-dashboard](https://github.com/Madelena/esphome-weatherman-dashboard) by Madelena.
 
+## History
+
+I started out with a weather dashboard (V1), but then decided to turn it into a display for train line information with real-time data from OneBusAway (V2). 
+
+In the process, there were two major callouts: the BUSY pin was inverted, and the display type was wrong.
+
 Mine looks like this:  
 
 ![E-Ink Display](demo/demo.jpg)
