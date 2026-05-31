@@ -421,26 +421,54 @@ sensor:
     id: uptime_sensor
     update_interval: 300s
 
+# Repaint the panel ONCE when the full set of train data first lands after boot,
+# then leave periodic refreshing to the display's 300s update_interval. This keeps
+# the e-ink from redrawing on every 60s HA push, while still showing trains within
+# ~a minute of boot instead of waiting up to 5 minutes for the first interval tick.
+globals:
+  - id: did_first_draw
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+script:
+  - id: maybe_first_draw
+    then:
+      - if:
+          condition:
+            lambda: |-
+              return !id(did_first_draw)
+                && id(train_positions).has_state() && id(train_directions).has_state()
+                && id(train_2_positions).has_state() && id(train_2_directions).has_state();
+          then:
+            - lambda: 'id(did_first_draw) = true;'
+            - component.update: my_display
+
 text_sensor:
   - platform: homeassistant
     id: train_positions
     entity_id: sensor.link_positions
     internal: true
+    on_value:
+      - script.execute: maybe_first_draw
   - platform: homeassistant
     id: train_directions
     entity_id: sensor.link_directions
     internal: true
-    # No on_value refresh: the panel redraws only on the 300s update_interval
-    # (and the manual Refresh button), not on every HA push.
+    on_value:
+      - script.execute: maybe_first_draw
   - platform: homeassistant
     id: train_2_positions
     entity_id: sensor.link_2_positions
     internal: true
+    on_value:
+      - script.execute: maybe_first_draw
   - platform: homeassistant
     id: train_2_directions
     entity_id: sensor.link_2_directions
     internal: true
-    # No on_value refresh (see train_directions above).
+    on_value:
+      - script.execute: maybe_first_draw
 
 time:
   - platform: homeassistant
