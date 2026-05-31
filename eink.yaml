@@ -90,8 +90,9 @@ font:
       # UI
       - "\U000F012C" # mdi-check-box-outline
       # Train Icons
-      - "\U000F052C" # mdi-train
+      - "\U000F052C" # mdi-train (1 Line)
       - "\U000F08C4" # mdi-train-variant
+      - "\U000F04DF" # mdi-subway-variant (2 Line)
       # Legend Icons
       - "\U000F004B" # mdi-arrow-down-drop-circle-outline
       - "\U000F0063" # mdi-arrow-up-drop-circle-outline
@@ -137,9 +138,11 @@ display:
       
       // Header
       int header_y = 38;
+      // The panel only redraws every 5 minutes, so the current clock time at
+      // draw time IS the "last updated" time. Label it clearly as such.
       auto time = id(time_sensor).now();
       if (time.is_valid()) {
-        it.printf(30, header_y, id(font_tiny), Color::WHITE, TextAlign::TOP_LEFT, "%s", time.strftime("%I:%M %p").c_str());
+        it.printf(4, header_y, id(font_tiny), Color::WHITE, TextAlign::TOP_LEFT, "Updated %s", time.strftime("%I:%M %p").c_str());
       }
       
       if (id(train_positions).has_state()) {
@@ -166,39 +169,46 @@ display:
 
       // ROUTE LINE AND STATIONS
       int transit_start_y = 73;
-      int transit_height = 560; // Reduced from 600 to free bottom band for the 2 Line legend
+      int transit_height = 560;
       int transit_end_y = transit_start_y + transit_height;
-      int line_x = 320;
+      // Map shifted hard-left: 1 Line track at 150, names left-aligned at x=4.
+      int line_x = 150;
+      int name_x = 4;
 
-      // Legend Icons
-      it.print(line_x - 15, header_y, id(icon_font_tiny), Color::WHITE, TextAlign::TOP_CENTER, "\U000F004B"); // Southbound
-      it.print(line_x + 15, header_y, id(icon_font_tiny), Color::WHITE, TextAlign::TOP_CENTER, "\U000F0063"); // Northbound
-      
+      // Direction legend (south/north) sits to the RIGHT of the 1 Line track in
+      // the header band, clear of the left-aligned "Updated" stamp.
+      it.print(line_x - 12, header_y, id(icon_font_tiny), Color::WHITE, TextAlign::TOP_CENTER, "\U000F004B"); // Southbound
+      it.print(line_x + 12, header_y, id(icon_font_tiny), Color::WHITE, TextAlign::TOP_CENTER, "\U000F0063"); // Northbound
+
       it.line(line_x, transit_start_y, line_x, transit_end_y, Color::WHITE);
-      
+
+      // Short, abbreviated 1 Line station names (left-aligned at the panel edge).
       const char* station_names[] = {
-        "Lynnwood City Center", "Mountlake Terrace", "Shoreline North/185th", "Shoreline South/148th",
-        "Northgate", "Roosevelt", "U District", "University of Washington", "Capitol Hill",
-        "Westlake", "Symphony", "Pioneer Square", "Int'l Dist/Chinatown", "Stadium", "SODO",
-        "Beacon Hill", "Mount Baker", "Columbia City", "Othello", "Rainier Beach",
-        "Tukwila Int'l Blvd", "SeaTac/Airport", "Angle Lake", "Kent Des Moines", "Star Lake", "Federal Way Downtown"
+        "Lynnwood", "Mtlk Terr", "Shoreline N", "Shoreline S",
+        "Northgate", "Roosevelt", "U District", "UW", "Cap Hill",
+        "Westlake", "Symphony", "Pioneer Sq", "ID/Chinatown", "Stadium", "SODO",
+        "Beacon Hill", "Mt Baker", "Columbia", "Othello", "Rainier Bch",
+        "Tukwila", "SeaTac", "Angle Lake", "Kent DM", "Star Lake", "Fed Way"
       };
-      
+
       // Precompute the 1 Line station y positions (also used by the 2 Line trunk).
       int station_y[26];
       for (int i = 0; i < 26; i++) {
         int y = transit_start_y + (int)((float)i / 25.0 * transit_height);
         station_y[i] = y;
         it.filled_circle(line_x, y, 3, Color::WHITE);
-        it.print(240, y, id(font_tiny), Color::WHITE, TextAlign::CENTER_RIGHT, station_names[i]);
+        it.print(name_x, y, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, station_names[i]);
       }
 
       // ===== 2 LINE EAST BRANCH =====
       // The 2 Line shares the first 13 stations (indices 0..12) with the 1 Line,
       // then branches EAST at Int'l Dist/Chinatown (index 12 = the junction) to
-      // 12 of its own stations, drawn as numbered dots on a second vertical line.
+      // 12 of its own stations, drawn as dots + short names on a second line.
       const int junction_idx = 12;
-      int line2_x = 425;
+      // Pulled in off the right edge (was 425). Leaves ~170px to the right of
+      // the branch for short station names; 2 Line trains ride the gutter
+      // between line_x (150) and line2_x (300).
+      int line2_x = 300;
       int junction_y = station_y[junction_idx];
 
       // The 12 east-branch dots reuse the SAME vertical band as the 1 Line's
@@ -231,28 +241,17 @@ display:
       // Second vertical line down the branch.
       it.line(line2_x, line2_py[13], line2_x, line2_py[24], Color::WHITE);
 
-      // Numbered dots + labels for the 12 east stations.
+      // Short east-station names (the freed right band) replace the old numbered
+      // dots + bottom legend. Left-aligned just right of each branch dot.
+      const char* east_names[] = {
+        "Judkins Pk", "Mercer Is", "S Bellevue", "East Main", "Bellevue Dt", "Wilburton",
+        "Spring Dist", "BelRed", "Overlake", "Redmond Tch", "Marymoor", "Redmond Dt"
+      };
       for (int i = 0; i < 12; i++) {
         int dx = line2_px[13 + i];
         int dy = line2_py[13 + i];
         it.filled_circle(dx, dy, 3, Color::WHITE);
-        it.printf(dx + 8, dy, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, "%d", i + 1);
-      }
-
-      // ===== 2 LINE LEGEND (bottom band) =====
-      // Maps the 12 numbers to abbreviated names, two columns, tiny font.
-      const char* leg_names[] = {
-        "Judkins Pk", "Mercer Is", "S Bellevue", "East Main", "Bellevue Dt", "Wilburton",
-        "Spring Dist", "BelRed", "Overlake", "Redmond Tch", "Marymoor", "Redmond Dt"
-      };
-      int legend_y0 = 690;
-      int legend_dy = 18;
-      int legend_col0_x = 8;
-      int legend_col1_x = 248;
-      it.print(legend_col0_x, legend_y0 - 18, id(font_tiny), Color::WHITE, TextAlign::TOP_LEFT, "2 Line East:");
-      for (int i = 0; i < 6; i++) {
-        it.printf(legend_col0_x, legend_y0 + i * legend_dy, id(font_micro), Color::WHITE, TextAlign::TOP_LEFT, "%d %s", i + 1, leg_names[i]);
-        it.printf(legend_col1_x, legend_y0 + i * legend_dy, id(font_micro), Color::WHITE, TextAlign::TOP_LEFT, "%d %s", i + 7, leg_names[i + 6]);
+        it.print(line2_x + 12, dy, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, east_names[i]);
       }
 
       // REAL TRAIN DATA PARSING
@@ -334,11 +333,11 @@ display:
             int tx = (int)(line2_px[lo] + (line2_px[hi] - line2_px[lo]) * t);
             int ty = (int)(line2_py[lo] + (line2_py[hi] - line2_py[lo]) * t);
 
-            // Offset slightly into the gutter so trains don't sit on the dots,
-            // and use the alternate train glyph to distinguish from 1 Line.
+            // Offset slightly into the gutter so trains don't sit on the dots.
             tx += (direction == 1) ? 12 : -12;
 
-            const char* icon2 = (direction == 1) ? "\U000F08C4" : "\U000F052C";
+            // Distinct 2 Line glyph: mdi-subway-variant (vs. 1 Line's mdi-train).
+            const char* icon2 = "\U000F04DF";
             it.print(tx, ty, id(icon_font_train), Color::WHITE, TextAlign::CENTER, icon2);
           }
         } else {
@@ -362,10 +361,8 @@ text_sensor:
     id: train_directions
     entity_id: sensor.link_directions
     internal: true
-    on_value:
-      # Update the display whenever the second sensor updates
-      then:
-        - component.update: my_display
+    # No on_value refresh: the panel redraws only on the 300s update_interval
+    # (and the manual Refresh button), not on every HA push.
   - platform: homeassistant
     id: train_2_positions
     entity_id: sensor.link_2_positions
@@ -374,10 +371,7 @@ text_sensor:
     id: train_2_directions
     entity_id: sensor.link_2_directions
     internal: true
-    on_value:
-      # Also refresh the display when 2 Line data updates
-      then:
-        - component.update: my_display
+    # No on_value refresh (see train_directions above).
 
 time:
   - platform: homeassistant
