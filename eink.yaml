@@ -61,6 +61,9 @@ font:
     id: font_tiny
     size: 15
   - file: "fonts/opensans.ttf"
+    id: font_micro
+    size: 12
+  - file: "fonts/opensans.ttf"
     id: font_date
     size: 40
   # Consolidate all icons into a single resource
@@ -147,13 +150,23 @@ display:
         while(std::getline(pos_ss, segment, ',')) {
            train_count++;
         }
-        it.printf(width - 55, header_y, id(font_tiny), Color::WHITE, TextAlign::TOP_RIGHT, "%d trains", train_count);
+        // Also count 2 Line trains, if present
+        int train_2_count = 0;
+        if (id(train_2_positions).has_state()) {
+          std::string pos2_str = id(train_2_positions).state;
+          std::stringstream pos2_ss(pos2_str);
+          std::string seg2;
+          while(std::getline(pos2_ss, seg2, ',')) {
+             if (!seg2.empty()) train_2_count++;
+          }
+        }
+        it.printf(width - 55, header_y, id(font_tiny), Color::WHITE, TextAlign::TOP_RIGHT, "1:%d 2:%d", train_count, train_2_count);
         it.printf(width - 30, header_y, id(icon_font_tiny), Color::WHITE, TextAlign::TOP_RIGHT, "\U000F012C");
       }
 
       // ROUTE LINE AND STATIONS
       int transit_start_y = 73;
-      int transit_height = 600; // Fixed smaller height to squish stations
+      int transit_height = 560; // Reduced from 600 to free bottom band for the 2 Line legend
       int transit_end_y = transit_start_y + transit_height;
       int line_x = 320;
 
@@ -171,10 +184,75 @@ display:
         "Tukwila Int'l Blvd", "SeaTac/Airport", "Angle Lake", "Kent Des Moines", "Star Lake", "Federal Way Downtown"
       };
       
+      // Precompute the 1 Line station y positions (also used by the 2 Line trunk).
+      int station_y[26];
       for (int i = 0; i < 26; i++) {
         int y = transit_start_y + (int)((float)i / 25.0 * transit_height);
+        station_y[i] = y;
         it.filled_circle(line_x, y, 3, Color::WHITE);
         it.print(240, y, id(font_tiny), Color::WHITE, TextAlign::CENTER_RIGHT, station_names[i]);
+      }
+
+      // ===== 2 LINE EAST BRANCH =====
+      // The 2 Line shares the first 13 stations (indices 0..12) with the 1 Line,
+      // then branches EAST at Int'l Dist/Chinatown (index 12 = the junction) to
+      // 12 of its own stations, drawn as numbered dots on a second vertical line.
+      const int junction_idx = 12;
+      int line2_x = 425;
+      int junction_y = station_y[junction_idx];
+
+      // The 12 east-branch dots reuse the SAME vertical band as the 1 Line's
+      // lower stations (indices 13..25): span from station_y[13] to station_y[25].
+      int branch_top_y = station_y[13];
+      int branch_bottom_y = station_y[25];
+
+      // Build the 25-point 2 Line polyline:
+      //  - points 0..12  : trunk station positions (shared with 1 Line)
+      //  - points 13..24 : the 12 east-branch dots
+      int line2_px[25];
+      int line2_py[25];
+      for (int i = 0; i <= junction_idx; i++) {
+        line2_px[i] = line_x;
+        line2_py[i] = station_y[i];
+      }
+      for (int i = 0; i < 12; i++) {
+        // 12 dots evenly spaced across the branch band
+        int by = branch_top_y + (int)((float)i / 11.0 * (branch_bottom_y - branch_top_y));
+        line2_px[13 + i] = line2_x;
+        line2_py[13 + i] = by;
+      }
+
+      // "2" branch line-label, just above the elbow (clear of the header counts).
+      it.print(line2_x, junction_y - 18, id(font_tiny), Color::WHITE, TextAlign::BOTTOM_CENTER, "2");
+
+      // Elbow: short diagonal from the junction on the 1 Line out to the top of
+      // the second vertical line, signalling the eastward turn.
+      it.line(line_x, junction_y, line2_x, line2_py[13], Color::WHITE);
+      // Second vertical line down the branch.
+      it.line(line2_x, line2_py[13], line2_x, line2_py[24], Color::WHITE);
+
+      // Numbered dots + labels for the 12 east stations.
+      for (int i = 0; i < 12; i++) {
+        int dx = line2_px[13 + i];
+        int dy = line2_py[13 + i];
+        it.filled_circle(dx, dy, 3, Color::WHITE);
+        it.printf(dx + 8, dy, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, "%d", i + 1);
+      }
+
+      // ===== 2 LINE LEGEND (bottom band) =====
+      // Maps the 12 numbers to abbreviated names, two columns, tiny font.
+      const char* leg_names[] = {
+        "Judkins Pk", "Mercer Is", "S Bellevue", "East Main", "Bellevue Dt", "Wilburton",
+        "Spring Dist", "BelRed", "Overlake", "Redmond Tch", "Marymoor", "Redmond Dt"
+      };
+      int legend_y0 = 690;
+      int legend_dy = 18;
+      int legend_col0_x = 8;
+      int legend_col1_x = 248;
+      it.print(legend_col0_x, legend_y0 - 18, id(font_tiny), Color::WHITE, TextAlign::TOP_LEFT, "2 Line East:");
+      for (int i = 0; i < 6; i++) {
+        it.printf(legend_col0_x, legend_y0 + i * legend_dy, id(font_micro), Color::WHITE, TextAlign::TOP_LEFT, "%d %s", i + 1, leg_names[i]);
+        it.printf(legend_col1_x, legend_y0 + i * legend_dy, id(font_micro), Color::WHITE, TextAlign::TOP_LEFT, "%d %s", i + 7, leg_names[i + 6]);
       }
 
       // REAL TRAIN DATA PARSING
@@ -198,21 +276,74 @@ display:
         if (positions.size() == directions.size()) {
           for (size_t i = 0; i < positions.size(); ++i) {
             yield(); // Prevent WDT timeout
-            
+
             float progress = positions[i];
             int direction = directions[i];
 
             int train_y = transit_start_y + (int)(progress * transit_height);
             int train_x = (direction == 1) ? line_x + 15 : line_x - 15;
-            
+
             const char* icon = (direction == 1) ? "\U000F052C" : "\U000F08C4"; // up or down circle arrow
             it.print(train_x, train_y, id(icon_font_train), Color::WHITE, TextAlign::CENTER, icon);
           }
         } else {
-          it.print(240, 750, id(font_tiny), Color::WHITE, TextAlign::CENTER, "Data Mismatch");
+          it.print(width - 5, 770, id(font_micro), Color::WHITE, TextAlign::TOP_RIGHT, "1 Line: Mismatch");
         }
       } else {
-        it.print(240, 750, id(font_tiny), Color::WHITE, TextAlign::CENTER, "API: No State");
+        it.print(width - 5, 770, id(font_micro), Color::WHITE, TextAlign::TOP_RIGHT, "1 Line: No State");
+      }
+
+      // ===== 2 LINE TRAIN DATA PARSING =====
+      // Same parsing as the 1 Line, but each train's fraction is mapped along the
+      // 25-point 2 Line polyline (13 trunk points + 12 east-branch dots) so trunk
+      // trains ride the shared line and post-junction trains follow the elbow east.
+      if (id(train_2_positions).has_state() && id(train_2_directions).has_state()) {
+        std::string pos2_str = id(train_2_positions).state;
+        std::string dir2_str = id(train_2_directions).state;
+
+        std::vector<float> positions2;
+        std::stringstream pos2_ss(pos2_str);
+        std::string segment2;
+        while(std::getline(pos2_ss, segment2, ',')) {
+           if (!segment2.empty()) positions2.push_back(std::stof(segment2));
+        }
+
+        std::vector<int> directions2;
+        std::stringstream dir2_ss(dir2_str);
+        while(std::getline(dir2_ss, segment2, ',')) {
+           if (!segment2.empty()) directions2.push_back(std::stoi(segment2));
+        }
+
+        if (positions2.size() == directions2.size()) {
+          const int num_segments = 24; // 25 points -> 24 segments
+          for (size_t i = 0; i < positions2.size(); ++i) {
+            yield(); // Prevent WDT timeout
+
+            float f = positions2[i];
+            if (f < 0.0f) f = 0.0f;
+            if (f > 1.0f) f = 1.0f;
+            int direction = directions2[i];
+
+            float p = f * num_segments;
+            int lo = (int)p;
+            if (lo > num_segments) lo = num_segments;
+            int hi = lo + 1;
+            if (hi > num_segments) hi = num_segments;
+            float t = p - (float)lo;
+
+            int tx = (int)(line2_px[lo] + (line2_px[hi] - line2_px[lo]) * t);
+            int ty = (int)(line2_py[lo] + (line2_py[hi] - line2_py[lo]) * t);
+
+            // Offset slightly into the gutter so trains don't sit on the dots,
+            // and use the alternate train glyph to distinguish from 1 Line.
+            tx += (direction == 1) ? 12 : -12;
+
+            const char* icon2 = (direction == 1) ? "\U000F08C4" : "\U000F052C";
+            it.print(tx, ty, id(icon_font_train), Color::WHITE, TextAlign::CENTER, icon2);
+          }
+        } else {
+          it.print(width - 5, 786, id(font_micro), Color::WHITE, TextAlign::TOP_RIGHT, "2 Line: Mismatch");
+        }
       }
 
 # Sensors
@@ -233,6 +364,18 @@ text_sensor:
     internal: true
     on_value:
       # Update the display whenever the second sensor updates
+      then:
+        - component.update: my_display
+  - platform: homeassistant
+    id: train_2_positions
+    entity_id: sensor.link_2_positions
+    internal: true
+  - platform: homeassistant
+    id: train_2_directions
+    entity_id: sensor.link_2_directions
+    internal: true
+    on_value:
+      # Also refresh the display when 2 Line data updates
       then:
         - component.update: my_display
 
