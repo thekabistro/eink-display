@@ -96,9 +96,10 @@ font:
       # Legend Icons
       - "\U000F004B" # mdi-arrow-down-drop-circle-outline
       - "\U000F0063" # mdi-arrow-up-drop-circle-outline
-      # WiFi status (info box)
+      # Status (info boxes)
       - "\U000F05A9" # mdi-wifi
       - "\U000F05AA" # mdi-wifi-off
+      - "\U000F07D0" # mdi-home-assistant
   - file: "fonts/materialdesignicons-webfont.ttf"
     id: icon_font_small
     size: 80
@@ -140,12 +141,12 @@ display:
       int height = it.get_height();
       
       // ROUTE LINE AND STATIONS
-      // Header (Updated stamp + direction legend + counts) removed so the whole
-      // map can shift UP and stop cropping at the bottom. "Updated h:mm" now
-      // lives in the info box. transit_start_y is small; transit_height grown so
-      // Fed Way (index 25) clears the bottom crop.
-      int transit_start_y = 28;
-      int transit_height = 720;
+      // The real panel crops a band off BOTH the top and bottom, so keep ALL
+      // stations within a safe inner window (~50..680). Stations are squished
+      // closer together (spacing ~25px) so every stop from Lynnwood (0) to
+      // Fed Way (25) is visible. "Updated h:mm" lives in the info boxes.
+      int transit_start_y = 62;
+      int transit_height = 620;
       int transit_end_y = transit_start_y + transit_height;
       // 1 Line track at 150; names nudged right (was x=4) to clear the panel
       // edge and read better.
@@ -248,45 +249,21 @@ display:
         int dx = line2_px[15 + i];
         int dy = line2_py[15 + i];
         it.filled_circle(dx, dy, 3, Color::WHITE);
-        it.print(line2_x + 14, dy, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, east_names[2 + i]);
+        it.print(line2_x + 26, dy, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, east_names[2 + i]);
       }
 
-      // ===== INFO BOX (lower-right white space) =====
-      // Sits below the bridge and right of the 1 Line trunk, in the now-empty
-      // band. Shows Updated time, WiFi + Home Assistant status, and train counts.
-      // Right edge pulled IN off the panel edge so it no longer crops.
+      // ===== INFO BOXES (lower-right white space) =====
+      // Two small bordered boxes sit below the bridge and right of the 1 Line
+      // trunk, well within the panel's safe inner window (clear of the cropped
+      // bottom band). Box 1: WiFi icon + 1 Line count. Box 2: Home Assistant
+      // icon + 2 Line count. Updated time printed just above them.
       {
-        int box_l = 200, box_t = 560, box_r = 455, box_b = 748;
-        it.rectangle(box_l, box_t, box_r - box_l, box_b - box_t, Color::WHITE);
-        int tx = box_l + 14;   // text left
-        int ix = box_l + 14;   // icon left
-        int vx = box_l + 44;   // value/text after icon
+        int bx_l = 205;          // boxes left edge
+        int bx_r = 450;          // boxes right edge (inside 480, no crop)
+        int icon_x = bx_l + 14;  // status icon
+        int cnt_x  = bx_l + 56;  // count text
 
-        // The panel redraws every 5 min, so "now" IS the last-updated time.
-        auto time = id(time_sensor).now();
-        if (time.is_valid()) {
-          it.printf(tx, box_t + 24, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT,
-                    "Updated %s", time.strftime("%I:%M %p").c_str());
-        }
-
-        // WiFi connected?
-        bool wifi_ok = wifi::global_wifi_component != nullptr &&
-                       wifi::global_wifi_component->is_connected();
-        const char* wifi_icon = wifi_ok ? "\U000F05A9" : "\U000F05AA";
-        it.print(ix, box_t + 56, id(icon_font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, wifi_icon);
-        it.printf(vx, box_t + 56, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT,
-                  "WiFi %s", wifi_ok ? "OK" : "--");
-
-        // Home Assistant API connected? (check-box glyph when up)
-        bool ha_ok = api::global_api_server != nullptr &&
-                     api::global_api_server->is_connected();
-        if (ha_ok) {
-          it.print(ix, box_t + 86, id(icon_font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, "\U000F012C");
-        }
-        it.printf(vx, box_t + 86, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT,
-                  "HA %s", ha_ok ? "OK" : "--");
-
-        // Recount trains (cheap CSV split) for the box.
+        // Count trains (cheap CSV split, empty-safe).
         int ib_c1 = 0, ib_c2 = 0;
         if (id(train_positions).has_state()) {
           std::stringstream ss(id(train_positions).state);
@@ -298,8 +275,31 @@ display:
           std::string s;
           while (std::getline(ss, s, ',')) { if (!s.empty()) ib_c2++; }
         }
-        it.printf(tx, box_t + 122, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, "1 Line: %d", ib_c1);
-        it.printf(tx, box_t + 150, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, "2 Line: %d", ib_c2);
+
+        // Updated time, just above the first box.
+        auto time = id(time_sensor).now();
+        if (time.is_valid()) {
+          it.printf(bx_l, 420, id(font_tiny), Color::WHITE, TextAlign::BOTTOM_LEFT,
+                    "Updated %s", time.strftime("%I:%M %p").c_str());
+        }
+
+        // Box 1: WiFi status + 1 Line train count.
+        int b1_t = 430, b1_b = 500, b1_mid = (b1_t + b1_b) / 2;
+        it.rectangle(bx_l, b1_t, bx_r - bx_l, b1_b - b1_t, Color::WHITE);
+        bool wifi_ok = wifi::global_wifi_component != nullptr &&
+                       wifi::global_wifi_component->is_connected();
+        const char* wifi_icon = wifi_ok ? "\U000F05A9" : "\U000F05AA";
+        it.print(icon_x, b1_mid, id(icon_font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, wifi_icon);
+        it.printf(cnt_x, b1_mid, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, "1 Line: %d", ib_c1);
+
+        // Box 2: Home Assistant status + 2 Line train count.
+        int b2_t = 510, b2_b = 580, b2_mid = (b2_t + b2_b) / 2;
+        it.rectangle(bx_l, b2_t, bx_r - bx_l, b2_b - b2_t, Color::WHITE);
+        bool ha_ok = api::global_api_server != nullptr &&
+                     api::global_api_server->is_connected();
+        const char* ha_icon = ha_ok ? "\U000F07D0" : "\U000F05AA";
+        it.print(icon_x, b2_mid, id(icon_font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, ha_icon);
+        it.printf(cnt_x, b2_mid, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, "2 Line: %d", ib_c2);
       }
 
       // REAL TRAIN DATA PARSING
@@ -307,37 +307,41 @@ display:
         std::string pos_str = id(train_positions).state;
         std::string dir_str = id(train_directions).state;
 
+        // Parse defensively: skip empty tokens and catch bad values so one
+        // malformed entry can't throw and abort the whole render (which made
+        // trains flicker/vanish on refresh).
         std::vector<float> positions;
         std::stringstream pos_ss(pos_str);
         std::string segment;
         while(std::getline(pos_ss, segment, ',')) {
-           positions.push_back(std::stof(segment));
+           if (segment.empty()) continue;
+           try { positions.push_back(std::stof(segment)); } catch (...) { }
         }
 
         std::vector<int> directions;
         std::stringstream dir_ss(dir_str);
         while(std::getline(dir_ss, segment, ',')) {
-           directions.push_back(std::stoi(segment));
+           if (segment.empty()) continue;
+           try { directions.push_back(std::stoi(segment)); } catch (...) { }
         }
 
-        if (positions.size() == directions.size()) {
-          for (size_t i = 0; i < positions.size(); ++i) {
-            yield(); // Prevent WDT timeout
+        // Draw every parsed position. Don't gate on exact size-match (a single
+        // dropped token could otherwise hide ALL trains); default missing
+        // directions to southbound.
+        for (size_t i = 0; i < positions.size(); ++i) {
+          yield(); // Prevent WDT timeout
 
-            float progress = positions[i];
-            int direction = directions[i];
+          float progress = positions[i];
+          int direction = (i < directions.size()) ? directions[i] : 0;
 
-            int train_y = transit_start_y + (int)(progress * transit_height);
-            int train_x = (direction == 1) ? line_x + 15 : line_x - 15;
+          int train_y = transit_start_y + (int)(progress * transit_height);
+          int train_x = (direction == 1) ? line_x + 15 : line_x - 15;
 
-            const char* icon = (direction == 1) ? "\U000F052C" : "\U000F08C4"; // up or down circle arrow
-            it.print(train_x, train_y, id(icon_font_train), Color::WHITE, TextAlign::CENTER, icon);
-          }
-        } else {
-          it.print(width - 5, 770, id(font_micro), Color::WHITE, TextAlign::TOP_RIGHT, "1 Line: Mismatch");
+          const char* icon = (direction == 1) ? "\U000F052C" : "\U000F08C4"; // up or down circle arrow
+          it.print(train_x, train_y, id(icon_font_train), Color::WHITE, TextAlign::CENTER, icon);
         }
       } else {
-        it.print(width - 5, 770, id(font_micro), Color::WHITE, TextAlign::TOP_RIGHT, "1 Line: No State");
+        it.print(205, 610, id(font_micro), Color::WHITE, TextAlign::TOP_LEFT, "1 Line: No State");
       }
 
       // ===== 2 LINE TRAIN DATA PARSING =====
@@ -352,16 +356,18 @@ display:
         std::stringstream pos2_ss(pos2_str);
         std::string segment2;
         while(std::getline(pos2_ss, segment2, ',')) {
-           if (!segment2.empty()) positions2.push_back(std::stof(segment2));
+           if (segment2.empty()) continue;
+           try { positions2.push_back(std::stof(segment2)); } catch (...) { }
         }
 
         std::vector<int> directions2;
         std::stringstream dir2_ss(dir2_str);
         while(std::getline(dir2_ss, segment2, ',')) {
-           if (!segment2.empty()) directions2.push_back(std::stoi(segment2));
+           if (segment2.empty()) continue;
+           try { directions2.push_back(std::stoi(segment2)); } catch (...) { }
         }
 
-        if (positions2.size() == directions2.size()) {
+        {
           const int num_segments = 24; // 25 points -> 24 segments
           for (size_t i = 0; i < positions2.size(); ++i) {
             yield(); // Prevent WDT timeout
@@ -369,7 +375,7 @@ display:
             float f = positions2[i];
             if (f < 0.0f) f = 0.0f;
             if (f > 1.0f) f = 1.0f;
-            int direction = directions2[i];
+            int direction = (i < directions2.size()) ? directions2[i] : 0;
 
             float p = f * num_segments;
             int lo = (int)p;
@@ -397,8 +403,6 @@ display:
             const char* icon2 = "\U000F04DF";
             it.print(tx, ty, id(icon_font_train), Color::WHITE, TextAlign::CENTER, icon2);
           }
-        } else {
-          it.print(width - 5, 786, id(font_micro), Color::WHITE, TextAlign::TOP_RIGHT, "2 Line: Mismatch");
         }
       }
 
