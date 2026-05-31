@@ -315,14 +315,18 @@ display:
         std::string segment;
         while(std::getline(pos_ss, segment, ',')) {
            if (segment.empty()) continue;
-           try { positions.push_back(std::stof(segment)); } catch (...) { }
+           char* endp = nullptr;
+           float v = strtof(segment.c_str(), &endp);
+           if (endp != segment.c_str()) positions.push_back(v); // skip non-numeric tokens (e.g. "unknown")
         }
 
         std::vector<int> directions;
         std::stringstream dir_ss(dir_str);
         while(std::getline(dir_ss, segment, ',')) {
            if (segment.empty()) continue;
-           try { directions.push_back(std::stoi(segment)); } catch (...) { }
+           char* endp = nullptr;
+           long v = strtol(segment.c_str(), &endp, 10);
+           if (endp != segment.c_str()) directions.push_back((int)v); // skip non-numeric tokens
         }
 
         // Draw every parsed position. Don't gate on exact size-match (a single
@@ -357,14 +361,18 @@ display:
         std::string segment2;
         while(std::getline(pos2_ss, segment2, ',')) {
            if (segment2.empty()) continue;
-           try { positions2.push_back(std::stof(segment2)); } catch (...) { }
+           char* endp2 = nullptr;
+           float v2 = strtof(segment2.c_str(), &endp2);
+           if (endp2 != segment2.c_str()) positions2.push_back(v2); // skip non-numeric tokens
         }
 
         std::vector<int> directions2;
         std::stringstream dir2_ss(dir2_str);
         while(std::getline(dir2_ss, segment2, ',')) {
            if (segment2.empty()) continue;
-           try { directions2.push_back(std::stoi(segment2)); } catch (...) { }
+           char* endp2 = nullptr;
+           long v2 = strtol(segment2.c_str(), &endp2, 10);
+           if (endp2 != segment2.c_str()) directions2.push_back((int)v2); // skip non-numeric tokens
         }
 
         {
