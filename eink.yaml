@@ -96,6 +96,9 @@ font:
       # Legend Icons
       - "\U000F004B" # mdi-arrow-down-drop-circle-outline
       - "\U000F0063" # mdi-arrow-up-drop-circle-outline
+      # WiFi status (info box)
+      - "\U000F05A9" # mdi-wifi
+      - "\U000F05AA" # mdi-wifi-off
   - file: "fonts/materialdesignicons-webfont.ttf"
     id: icon_font_small
     size: 80
@@ -168,12 +171,16 @@ display:
       }
 
       // ROUTE LINE AND STATIONS
-      int transit_start_y = 73;
-      int transit_height = 560;
+      // Shifted DOWN and made taller to use the previously-empty bottom band.
+      // transit_end_y = 95 + 660 = 755, leaving Fed Way comfortably above the
+      // bottom crop on the 480x800 panel.
+      int transit_start_y = 95;
+      int transit_height = 660;
       int transit_end_y = transit_start_y + transit_height;
-      // Map shifted hard-left: 1 Line track at 150, names left-aligned at x=4.
+      // 1 Line track at 150; names nudged right (was x=4) to clear the panel
+      // edge and read better.
       int line_x = 150;
-      int name_x = 4;
+      int name_x = 20;
 
       // Direction legend (south/north) sits to the RIGHT of the 1 Line track in
       // the header band, clear of the left-aligned "Updated" stamp.
@@ -200,58 +207,111 @@ display:
         it.print(name_x, y, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, station_names[i]);
       }
 
-      // ===== 2 LINE EAST BRANCH =====
+      // ===== 2 LINE EAST BRANCH (BRIDGE + NORTH HOOK) =====
       // The 2 Line shares the first 13 stations (indices 0..12) with the 1 Line,
-      // then branches EAST at Int'l Dist/Chinatown (index 12 = the junction) to
-      // 12 of its own stations, drawn as dots + short names on a second line.
+      // then at Int'l Dist/Chinatown (index 12 = the junction) it elbows EAST
+      // across the I-90 floating bridge (Judkins Pk, Mercer Is) and then hooks
+      // NORTH up the Eastside to Downtown Redmond. Geographically:
+      //   - a HORIZONTAL bridge segment at y = y_cid (the junction latitude)
+      //   - a VERTICAL north arm climbing UP the right side toward Lynnwood lat.
       const int junction_idx = 12;
-      // Pulled in off the right edge (was 425). Leaves ~170px to the right of
-      // the branch for short station names; 2 Line trains ride the gutter
-      // between line_x (150) and line2_x (300).
-      int line2_x = 300;
-      int junction_y = station_y[junction_idx];
+      int y_cid = station_y[junction_idx];
 
-      // The 12 east-branch dots reuse the SAME vertical band as the 1 Line's
-      // lower stations (indices 13..25): span from station_y[13] to station_y[25].
-      int branch_top_y = station_y[13];
-      int branch_bottom_y = station_y[25];
+      // Bridge: horizontal from the junction (line_x) east to bridge_end_x.
+      // Judkins Pk and Mercer Is sit at ~1/3 and ~2/3 across the span.
+      int bridge_end_x = 360;          // east end of bridge = base of north arm
+      int judkins_x = line_x + (bridge_end_x - line_x) / 3;       // 220
+      int mercer_x  = line_x + (bridge_end_x - line_x) * 2 / 3;   // 290
+
+      // North arm: vertical at line2_x, going UP. South Bellevue sits just above
+      // the bridge; Downtown Redmond climbs to ~the Lynnwood latitude (top).
+      int line2_x = bridge_end_x;      // 360
+      int arm_bottom_y = y_cid - 26;   // S Bellevue, just above the bridge
+      int arm_top_y = station_y[0];    // Downtown Redmond ~ Lynnwood latitude
 
       // Build the 25-point 2 Line polyline:
-      //  - points 0..12  : trunk station positions (shared with 1 Line)
-      //  - points 13..24 : the 12 east-branch dots
+      //  - points 0..12  : trunk station positions (shared with 1 Line vertical)
+      //  - point 13       : Judkins Pk  (on the bridge)
+      //  - point 14       : Mercer Is   (on the bridge)
+      //  - points 15..24  : S Bellevue..Downtown Redmond (climbing UP the arm)
       int line2_px[25];
       int line2_py[25];
       for (int i = 0; i <= junction_idx; i++) {
         line2_px[i] = line_x;
         line2_py[i] = station_y[i];
       }
-      for (int i = 0; i < 12; i++) {
-        // 12 dots evenly spaced across the branch band
-        int by = branch_top_y + (int)((float)i / 11.0 * (branch_bottom_y - branch_top_y));
-        line2_px[13 + i] = line2_x;
-        line2_py[13 + i] = by;
+      // Bridge dots.
+      line2_px[13] = judkins_x; line2_py[13] = y_cid;
+      line2_px[14] = mercer_x;  line2_py[14] = y_cid;
+      // North arm dots: 10 stations climbing from arm_bottom_y up to arm_top_y.
+      // point 15 = bottom (S Bellevue), point 24 = top (Downtown Redmond).
+      for (int i = 0; i < 10; i++) {
+        int ay = arm_bottom_y - (int)((float)i / 9.0 * (arm_bottom_y - arm_top_y));
+        line2_px[15 + i] = line2_x;
+        line2_py[15 + i] = ay;
       }
 
-      // "2" branch line-label, just above the elbow (clear of the header counts).
-      it.print(line2_x, junction_y - 18, id(font_tiny), Color::WHITE, TextAlign::BOTTOM_CENTER, "2");
+      // "2" branch line-label, just above the elbow at the junction.
+      it.print(judkins_x, y_cid - 16, id(font_tiny), Color::WHITE, TextAlign::BOTTOM_CENTER, "2");
 
-      // Elbow: short diagonal from the junction on the 1 Line out to the top of
-      // the second vertical line, signalling the eastward turn.
-      it.line(line_x, junction_y, line2_x, line2_py[13], Color::WHITE);
-      // Second vertical line down the branch.
-      it.line(line2_x, line2_py[13], line2_x, line2_py[24], Color::WHITE);
+      // Bridge line: horizontal from the junction east to the base of the arm.
+      it.line(line_x, y_cid, line2_x, y_cid, Color::WHITE);
+      // North arm: vertical from the bridge east-end up to Downtown Redmond.
+      it.line(line2_x, arm_bottom_y, line2_x, arm_top_y, Color::WHITE);
+      // Short connector so the arm visibly joins the bridge corner.
+      it.line(line2_x, y_cid, line2_x, arm_bottom_y, Color::WHITE);
 
-      // Short east-station names (the freed right band) replace the old numbered
-      // dots + bottom legend. Left-aligned just right of each branch dot.
+      // Station dots + short names.
       const char* east_names[] = {
         "Judkins Pk", "Mercer Is", "S Bellevue", "East Main", "Bellevue Dt", "Wilburton",
         "Spring Dist", "BelRed", "Overlake", "Redmond Tch", "Marymoor", "Redmond Dt"
       };
-      for (int i = 0; i < 12; i++) {
+      // Bridge stations: dots on the bridge, names BELOW the bridge line so they
+      // stay clear of the 1 Line trunk and the bridge train icons (which ride
+      // ABOVE the bridge).
+      for (int i = 0; i < 2; i++) {
         int dx = line2_px[13 + i];
         int dy = line2_py[13 + i];
         it.filled_circle(dx, dy, 3, Color::WHITE);
-        it.print(line2_x + 12, dy, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, east_names[i]);
+        it.print(dx, dy + 8, id(font_tiny), Color::WHITE, TextAlign::TOP_CENTER, east_names[i]);
+      }
+      // North-arm stations: dots on the arm, names pushed OUT to the RIGHT
+      // (train icons ride the INNER/left side, so names never overlap them).
+      for (int i = 0; i < 10; i++) {
+        int dx = line2_px[15 + i];
+        int dy = line2_py[15 + i];
+        it.filled_circle(dx, dy, 3, Color::WHITE);
+        it.print(line2_x + 18, dy, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, east_names[2 + i]);
+      }
+
+      // ===== INFO BOX (lower-right white space) =====
+      // Sits below the bridge and right of the 1 Line trunk, in the now-empty
+      // band. Shows WiFi status + train counts.
+      {
+        int box_l = 205, box_t = 600, box_r = 462, box_b = 705;
+        it.rectangle(box_l, box_t, box_r - box_l, box_b - box_t, Color::WHITE);
+
+        bool wifi_ok = wifi::global_wifi_component != nullptr &&
+                       wifi::global_wifi_component->is_connected();
+        const char* wifi_icon = wifi_ok ? "\U000F05A9" : "\U000F05AA";
+        it.print(box_l + 14, box_t + 26, id(icon_font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, wifi_icon);
+        it.printf(box_l + 44, box_t + 26, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT,
+                  "WiFi %s", wifi_ok ? "OK" : "--");
+
+        // Recount trains (cheap CSV split) for the box.
+        int ib_c1 = 0, ib_c2 = 0;
+        if (id(train_positions).has_state()) {
+          std::stringstream ss(id(train_positions).state);
+          std::string s;
+          while (std::getline(ss, s, ',')) { if (!s.empty()) ib_c1++; }
+        }
+        if (id(train_2_positions).has_state()) {
+          std::stringstream ss(id(train_2_positions).state);
+          std::string s;
+          while (std::getline(ss, s, ',')) { if (!s.empty()) ib_c2++; }
+        }
+        it.printf(box_l + 14, box_t + 60, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, "1 Line: %d", ib_c1);
+        it.printf(box_l + 14, box_t + 86, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, "2 Line: %d", ib_c2);
       }
 
       // REAL TRAIN DATA PARSING
@@ -333,8 +393,17 @@ display:
             int tx = (int)(line2_px[lo] + (line2_px[hi] - line2_px[lo]) * t);
             int ty = (int)(line2_py[lo] + (line2_py[hi] - line2_py[lo]) * t);
 
-            // Offset slightly into the gutter so trains don't sit on the dots.
-            tx += (direction == 1) ? 12 : -12;
+            // Offset trains onto the INNER side so they never overlap names:
+            //  - trunk (lo < 12): vertical line -> offset in x (matches 1 Line).
+            //  - bridge (12 <= lo < 14): horizontal -> offset UP (names are below).
+            //  - north arm (lo >= 14): vertical -> offset LEFT toward center.
+            if (lo < 12) {
+              tx += (direction == 1) ? 14 : -14;
+            } else if (lo < 14) {
+              ty -= 14;            // above the bridge; names sit below it
+            } else {
+              tx -= 16;            // inner/left of the arm; names sit to the right
+            }
 
             // Distinct 2 Line glyph: mdi-subway-variant (vs. 1 Line's mdi-train).
             const char* icon2 = "\U000F04DF";
