@@ -223,9 +223,6 @@ display:
         line2_py[15 + i] = ay;
       }
 
-      // "2" branch line-label, just above the bridge.
-      it.print(judkins_x, bridge_y - 16, id(font_tiny), Color::WHITE, TextAlign::BOTTOM_CENTER, "2");
-
       // Bridge line: horizontal from the junction east to the base of the arm.
       it.line(line_x, bridge_y, line2_x, bridge_y, Color::WHITE);
       // North arm: vertical from the bridge east-end up to Downtown Redmond.
@@ -246,7 +243,13 @@ display:
         int dx = line2_px[13 + i];
         int dy = line2_py[13 + i];
         it.filled_circle(dx, dy, 3, Color::WHITE);
-        it.print(dx, dy + 8, id(font_tiny), Color::WHITE, TextAlign::TOP_CENTER, east_names[i]);
+        // Vertical (stacked) label, dropped a bit further below the bridge so it
+        // clears the bridge train icons and the two labels don't crowd each other.
+        const char* nm = east_names[i];
+        for (int j = 0; nm[j] != '\0'; j++) {
+          char ch[2] = { nm[j], '\0' };
+          it.print(dx, dy + 20 + j * 12, id(font_micro), Color::WHITE, TextAlign::TOP_CENTER, ch);
+        }
       }
       // North-arm stations: dots on the arm, names pushed OUT to the RIGHT
       // (train icons ride the INNER/left side, so names never overlap them).
@@ -300,11 +303,16 @@ display:
           it.printf(bx_l + pad, sb_t + pad, id(font_micro), Color::WHITE, TextAlign::TOP_LEFT,
                     "Updated %s", time.strftime("%I:%M %p").c_str());
         }
+        // WiFi icon swaps to "wifi-off" when down; HA keeps its logo. Each icon is
+        // followed by an "OK" (connected) or "X" (disconnected) status tag.
         const char* wifi_icon = wifi_ok ? "\U000F05A9" : "\U000F05AA";  // wifi / wifi-off
-        const char* ha_icon   = ha_ok   ? "\U000F07D0" : "\U000F05AA";  // home-assistant / disconnected
+        const char* ha_icon   = "\U000F07D0";                            // home-assistant logo
         int icon_y = sb_t + pad + rh;
-        it.print(bx_l + pad, icon_y, id(icon_font_train), Color::WHITE, TextAlign::TOP_LEFT, wifi_icon);
-        it.print(bx_l + pad + 30, icon_y, id(icon_font_train), Color::WHITE, TextAlign::TOP_LEFT, ha_icon);
+        int txt_y  = icon_y + 4;
+        it.print(bx_l + pad,      icon_y, id(icon_font_train), Color::WHITE, TextAlign::TOP_LEFT, wifi_icon);
+        it.print(bx_l + pad + 24, txt_y,  id(font_micro),      Color::WHITE, TextAlign::TOP_LEFT, wifi_ok ? "OK" : "X");
+        it.print(bx_l + pad + 58, icon_y, id(icon_font_train), Color::WHITE, TextAlign::TOP_LEFT, ha_icon);
+        it.print(bx_l + pad + 82, txt_y,  id(font_micro),      Color::WHITE, TextAlign::TOP_LEFT, ha_ok ? "OK" : "X");
       }
 
       // REAL TRAIN DATA PARSING
