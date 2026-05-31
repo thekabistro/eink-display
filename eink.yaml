@@ -92,7 +92,8 @@ font:
       # Train Icons
       - "\U000F052C" # mdi-train (1 Line)
       - "\U000F08C4" # mdi-train-variant
-      - "\U000F04DF" # mdi-subway-variant (2 Line)
+      - "\U000F04DF" # mdi-subway-variant (2 Line, dir 1)
+      - "\U000F06AC" # mdi-subway (2 Line, dir 0)
       # Legend Icons
       - "\U000F004B" # mdi-arrow-down-drop-circle-outline
       - "\U000F0063" # mdi-arrow-up-drop-circle-outline
@@ -182,6 +183,10 @@ display:
       //   - a VERTICAL north arm climbing UP the right side toward Lynnwood lat.
       const int junction_idx = 12;
       int y_cid = station_y[junction_idx];
+      // Bridge sits a bit BELOW the junction latitude so Judkins/Mercer read
+      // clearly under the branch (the short drop down the trunk is hidden in the
+      // trunk line, which is already drawn at line_x).
+      int bridge_y = y_cid + 18;
 
       // Bridge: horizontal from the junction (line_x) east to bridge_end_x.
       // Judkins Pk and Mercer Is sit at ~1/3 and ~2/3 across the span.
@@ -208,8 +213,8 @@ display:
         line2_py[i] = station_y[i];
       }
       // Bridge dots.
-      line2_px[13] = judkins_x; line2_py[13] = y_cid;
-      line2_px[14] = mercer_x;  line2_py[14] = y_cid;
+      line2_px[13] = judkins_x; line2_py[13] = bridge_y;
+      line2_px[14] = mercer_x;  line2_py[14] = bridge_y;
       // North arm dots: 10 stations climbing from arm_bottom_y up to arm_top_y.
       // point 15 = bottom (S Bellevue), point 24 = top (Downtown Redmond).
       for (int i = 0; i < 10; i++) {
@@ -218,15 +223,15 @@ display:
         line2_py[15 + i] = ay;
       }
 
-      // "2" branch line-label, just above the elbow at the junction.
-      it.print(judkins_x, y_cid - 16, id(font_tiny), Color::WHITE, TextAlign::BOTTOM_CENTER, "2");
+      // "2" branch line-label, just above the bridge.
+      it.print(judkins_x, bridge_y - 16, id(font_tiny), Color::WHITE, TextAlign::BOTTOM_CENTER, "2");
 
       // Bridge line: horizontal from the junction east to the base of the arm.
-      it.line(line_x, y_cid, line2_x, y_cid, Color::WHITE);
+      it.line(line_x, bridge_y, line2_x, bridge_y, Color::WHITE);
       // North arm: vertical from the bridge east-end up to Downtown Redmond.
       it.line(line2_x, arm_bottom_y, line2_x, arm_top_y, Color::WHITE);
       // Short connector so the arm visibly joins the bridge corner.
-      it.line(line2_x, y_cid, line2_x, arm_bottom_y, Color::WHITE);
+      it.line(line2_x, bridge_y, line2_x, arm_bottom_y, Color::WHITE);
 
       // Station dots + short names. Names kept short so the north arm fits within
       // the 480px width with the arm squeezed left to line2_x=300.
@@ -252,10 +257,10 @@ display:
         it.print(line2_x + 44, dy, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, east_names[2 + i]);
       }
 
-      // ===== TRAIN COUNTS + SYSTEM STATUS (compact, lower area) =====
-      // Two small boxes low on the panel, in the empty space to the right of the
-      // 1 Line's lower stations. LEFT box = train counts, labeled so the numbers
-      // are self-explanatory. RIGHT box = system status (last-updated, WiFi, HA).
+      // ===== SYSTEM STATUS + TRAIN COUNTS (compact, vertically stacked) =====
+      // Two small boxes stacked one on top of the other in the empty lower-right
+      // of the panel. TOP box = system status (last-updated time + WiFi/HA icons).
+      // BOTTOM box = train counts, labeled so the numbers are self-explanatory.
       {
         // Count trains (cheap CSV split, empty-safe).
         int ib_c1 = 0, ib_c2 = 0;
@@ -276,29 +281,30 @@ display:
                      api::global_api_server->is_connected();
         auto time = id(time_sensor).now();
 
-        const int rh = 15;   // font_micro row height
+        const int rh = 15;                 // font_micro row height
         const int pad = 5;
-        const int box_b = 672; // both boxes bottom-aligned near the panel bottom
+        const int bx_l = 300, bx_r = 470;  // shared left/right edges (stacked)
 
-        // LEFT box: train counts (2 rows).
-        int tb_l = 185, tb_r = 322, tb_t = box_b - (2 * rh + 2 * pad);
-        it.rectangle(tb_l, tb_t, tb_r - tb_l, box_b - tb_t, Color::WHITE);
-        it.printf(tb_l + pad, tb_t + pad, id(font_micro), Color::WHITE, TextAlign::TOP_LEFT,
+        // BOTTOM box: train counts (2 rows), bottom-aligned near the panel bottom.
+        int cb_b = 672, cb_t = cb_b - (2 * rh + 2 * pad);
+        it.rectangle(bx_l, cb_t, bx_r - bx_l, cb_b - cb_t, Color::WHITE);
+        it.printf(bx_l + pad, cb_t + pad, id(font_micro), Color::WHITE, TextAlign::TOP_LEFT,
                   "1 Line: %d %s", ib_c1, ib_c1 == 1 ? "train" : "trains");
-        it.printf(tb_l + pad, tb_t + pad + rh, id(font_micro), Color::WHITE, TextAlign::TOP_LEFT,
+        it.printf(bx_l + pad, cb_t + pad + rh, id(font_micro), Color::WHITE, TextAlign::TOP_LEFT,
                   "2 Line: %d %s", ib_c2, ib_c2 == 1 ? "train" : "trains");
 
-        // RIGHT box: system status (3 rows).
-        int sb_l = 332, sb_r = 468, sb_t = box_b - (3 * rh + 2 * pad);
-        it.rectangle(sb_l, sb_t, sb_r - sb_l, box_b - sb_t, Color::WHITE);
+        // TOP box (sits just above the counts box): Updated time + WiFi/HA icons.
+        int sb_b = cb_t - 6, sb_t = sb_b - (rh + 24 + 2 * pad);
+        it.rectangle(bx_l, sb_t, bx_r - bx_l, sb_b - sb_t, Color::WHITE);
         if (time.is_valid()) {
-          it.printf(sb_l + pad, sb_t + pad, id(font_micro), Color::WHITE, TextAlign::TOP_LEFT,
+          it.printf(bx_l + pad, sb_t + pad, id(font_micro), Color::WHITE, TextAlign::TOP_LEFT,
                     "Updated %s", time.strftime("%I:%M %p").c_str());
         }
-        it.printf(sb_l + pad, sb_t + pad + rh, id(font_micro), Color::WHITE, TextAlign::TOP_LEFT,
-                  "WiFi %s", wifi_ok ? "OK" : "--");
-        it.printf(sb_l + pad, sb_t + pad + 2 * rh, id(font_micro), Color::WHITE, TextAlign::TOP_LEFT,
-                  "HA %s", ha_ok ? "OK" : "--");
+        const char* wifi_icon = wifi_ok ? "\U000F05A9" : "\U000F05AA";  // wifi / wifi-off
+        const char* ha_icon   = ha_ok   ? "\U000F07D0" : "\U000F05AA";  // home-assistant / disconnected
+        int icon_y = sb_t + pad + rh;
+        it.print(bx_l + pad, icon_y, id(icon_font_train), Color::WHITE, TextAlign::TOP_LEFT, wifi_icon);
+        it.print(bx_l + pad + 30, icon_y, id(icon_font_train), Color::WHITE, TextAlign::TOP_LEFT, ha_icon);
       }
 
       // REAL TRAIN DATA PARSING
@@ -407,8 +413,9 @@ display:
               tx += (direction == 1) ? 14 : -14;
             }
 
-            // Distinct 2 Line glyph: mdi-subway-variant (vs. 1 Line's mdi-train).
-            const char* icon2 = "\U000F04DF";
+            // Distinct 2 Line glyphs, one per direction (vs. 1 Line's mdi-train):
+            // mdi-subway-variant for dir 1, mdi-subway for dir 0.
+            const char* icon2 = (direction == 1) ? "\U000F04DF" : "\U000F06AC";
             it.print(tx, ty, id(icon_font_train), Color::WHITE, TextAlign::CENTER, icon2);
           }
         }
