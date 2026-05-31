@@ -186,7 +186,7 @@ display:
       // Bridge: horizontal from the junction (line_x) east to bridge_end_x.
       // Judkins Pk and Mercer Is sit at ~1/3 and ~2/3 across the span.
       // Squeezed LEFT (was 360) so the north-arm station names fit on-screen.
-      int bridge_end_x = 300;          // east end of bridge = base of north arm
+      int bridge_end_x = 285;          // east end of bridge = base of north arm (nudged left for train room)
       int judkins_x = line_x + (bridge_end_x - line_x) / 3;       // 200
       int mercer_x  = line_x + (bridge_end_x - line_x) * 2 / 3;   // 250
 
@@ -249,7 +249,7 @@ display:
         int dx = line2_px[15 + i];
         int dy = line2_py[15 + i];
         it.filled_circle(dx, dy, 3, Color::WHITE);
-        it.print(line2_x + 32, dy, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, east_names[2 + i]);
+        it.print(line2_x + 44, dy, id(font_tiny), Color::WHITE, TextAlign::CENTER_LEFT, east_names[2 + i]);
       }
 
       // ===== TRAIN COUNTS + SYSTEM STATUS (compact, lower area) =====
