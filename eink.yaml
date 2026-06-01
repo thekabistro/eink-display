@@ -267,13 +267,13 @@ display:
       {
         // Count trains (cheap CSV split, empty-safe).
         int ib_c1 = 0, ib_c2 = 0;
-        if (id(train_positions).has_state()) {
-          std::stringstream ss(id(train_positions).state);
+        {
+          std::stringstream ss(id(pos1_hold));
           std::string s;
           while (std::getline(ss, s, ',')) { if (!s.empty()) ib_c1++; }
         }
-        if (id(train_2_positions).has_state()) {
-          std::stringstream ss(id(train_2_positions).state);
+        {
+          std::stringstream ss(id(pos2_hold));
           std::string s;
           while (std::getline(ss, s, ',')) { if (!s.empty()) ib_c2++; }
         }
@@ -316,9 +316,9 @@ display:
       }
 
       // REAL TRAIN DATA PARSING
-      if (id(train_positions).has_state() && id(train_directions).has_state()) {
-        std::string pos_str = id(train_positions).state;
-        std::string dir_str = id(train_directions).state;
+      if (!id(pos1_hold).empty() && !id(dir1_hold).empty()) {
+        std::string pos_str = id(pos1_hold);
+        std::string dir_str = id(dir1_hold);
 
         // Parse defensively: skip empty tokens and catch bad values so one
         // malformed entry can't throw and abort the whole render (which made
@@ -365,9 +365,9 @@ display:
       // Same parsing as the 1 Line, but each train's fraction is mapped along the
       // 25-point 2 Line polyline (13 trunk points + 12 east-branch dots) so trunk
       // trains ride the shared line and post-junction trains follow the elbow east.
-      if (id(train_2_positions).has_state() && id(train_2_directions).has_state()) {
-        std::string pos2_str = id(train_2_positions).state;
-        std::string dir2_str = id(train_2_directions).state;
+      if (!id(pos2_hold).empty() && !id(dir2_hold).empty()) {
+        std::string pos2_str = id(pos2_hold);
+        std::string dir2_str = id(dir2_hold);
 
         std::vector<float> positions2;
         std::stringstream pos2_ss(pos2_str);
@@ -445,6 +445,22 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
+  # Last-good train CSVs, retained on the ESP. OneBusAway intermittently
+  # rate-limits HA's request burst (HTTP 429), so a sensor can momentarily go
+  # 'unknown'/''. We only overwrite the held value when a real CSV arrives, so a
+  # transient blip never clears the trains from the panel.
+  - id: pos1_hold
+    type: std::string
+    restore_value: no
+  - id: dir1_hold
+    type: std::string
+    restore_value: no
+  - id: pos2_hold
+    type: std::string
+    restore_value: no
+  - id: dir2_hold
+    type: std::string
+    restore_value: no
 
 script:
   - id: maybe_first_draw
@@ -453,8 +469,8 @@ script:
           condition:
             lambda: |-
               return !id(did_first_draw)
-                && id(train_positions).has_state() && id(train_directions).has_state()
-                && id(train_2_positions).has_state() && id(train_2_directions).has_state();
+                && !id(pos1_hold).empty() && !id(dir1_hold).empty()
+                && !id(pos2_hold).empty() && !id(dir2_hold).empty();
           then:
             - lambda: 'id(did_first_draw) = true;'
             - component.update: my_display
@@ -465,24 +481,28 @@ text_sensor:
     entity_id: sensor.link_positions
     internal: true
     on_value:
+      - lambda: 'if (x.find_first_of("0123456789") != std::string::npos) id(pos1_hold) = x;'
       - script.execute: maybe_first_draw
   - platform: homeassistant
     id: train_directions
     entity_id: sensor.link_directions
     internal: true
     on_value:
+      - lambda: 'if (x.find_first_of("0123456789") != std::string::npos) id(dir1_hold) = x;'
       - script.execute: maybe_first_draw
   - platform: homeassistant
     id: train_2_positions
     entity_id: sensor.link_2_positions
     internal: true
     on_value:
+      - lambda: 'if (x.find_first_of("0123456789") != std::string::npos) id(pos2_hold) = x;'
       - script.execute: maybe_first_draw
   - platform: homeassistant
     id: train_2_directions
     entity_id: sensor.link_2_directions
     internal: true
     on_value:
+      - lambda: 'if (x.find_first_of("0123456789") != std::string::npos) id(dir2_hold) = x;'
       - script.execute: maybe_first_draw
 
 time:
